@@ -1,0 +1,4 @@
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/services" `
+  -ContentType "application/json" `
+  -Body '{"name":"payment-api","description":"API de pagamento"}'
