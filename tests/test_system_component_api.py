@@ -3,51 +3,51 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
-from app.application import ServiceNotFoundError
-from app.main import app, get_service_service
-from app.models import Service
-from app.repositories import DuplicateServiceNameError
+from app.application import SystemComponentNotFoundError
+from app.main import app, get_system_component_service
+from app.models import SystemComponent
+from app.repositories import DuplicateSystemComponentNameError
 
 
-class FakeService:
+class FakeSystemComponentService:
     def __init__(self) -> None:
-        self._items: dict[UUID, Service] = {}
+        self._items: dict[UUID, SystemComponent] = {}
 
-    def create(self, name: str, description: str | None = None) -> Service:
+    def create(self, name: str, description: str | None = None) -> SystemComponent:
         if any(item.name == name for item in self._items.values()):
-            raise DuplicateServiceNameError
+            raise DuplicateSystemComponentNameError
         now = datetime.now(timezone.utc)
-        service = Service(
+        system_component = SystemComponent(
             id=uuid4(),
             name=name,
             description=description,
             created_at=now,
             updated_at=now,
         )
-        self._items[service.id] = service
-        return service
+        self._items[system_component.id] = system_component
+        return system_component
 
-    def list(self) -> list[Service]:
+    def list(self) -> list[SystemComponent]:
         return list(self._items.values())
 
-    def get_by_id(self, service_id: UUID) -> Service:
-        service = self._items.get(service_id)
-        if not service:
-            raise ServiceNotFoundError
-        return service
+    def get_by_id(self, system_component_id: UUID) -> SystemComponent:
+        system_component = self._items.get(system_component_id)
+        if not system_component:
+            raise SystemComponentNotFoundError
+        return system_component
 
 
-def build_client(service: FakeService) -> TestClient:
-    app.dependency_overrides[get_service_service] = lambda: service
+def build_client(service: FakeSystemComponentService) -> TestClient:
+    app.dependency_overrides[get_system_component_service] = lambda: service
     return TestClient(app)
 
 
-def test_create_service() -> None:
-    service = FakeService()
+def test_create_system_component() -> None:
+    service = FakeSystemComponentService()
     client = build_client(service)
 
     response = client.post(
-        "/services",
+        "/system-components",
         json={"name": "payment-api", "description": "Handles payments"},
     )
 
@@ -61,13 +61,13 @@ def test_create_service() -> None:
     app.dependency_overrides.clear()
 
 
-def test_list_services() -> None:
-    service = FakeService()
+def test_list_system_components() -> None:
+    service = FakeSystemComponentService()
     service.create(name="payment-api", description="A")
     service.create(name="ledger-api", description="B")
     client = build_client(service)
 
-    response = client.get("/services")
+    response = client.get("/system-components")
 
     assert response.status_code == 200
     data = response.json()
@@ -76,35 +76,35 @@ def test_list_services() -> None:
     app.dependency_overrides.clear()
 
 
-def test_get_service_by_id_and_not_found() -> None:
-    service = FakeService()
+def test_get_system_component_by_id_and_not_found() -> None:
+    service = FakeSystemComponentService()
     created = service.create(name="payment-api", description="A")
     client = build_client(service)
 
-    found = client.get(f"/services/{created.id}")
+    found = client.get(f"/system-components/{created.id}")
     assert found.status_code == 200
     assert found.json()["id"] == str(created.id)
 
-    missing = client.get(f"/services/{uuid4()}")
+    missing = client.get(f"/system-components/{uuid4()}")
     assert missing.status_code == 404
-    assert missing.json()["detail"] == "Service not found"
+    assert missing.json()["detail"] == "System component not found"
     app.dependency_overrides.clear()
 
 
-def test_create_service_duplicate_name_returns_409() -> None:
-    service = FakeService()
+def test_create_system_component_duplicate_name_returns_409() -> None:
+    service = FakeSystemComponentService()
     client = build_client(service)
 
     first = client.post(
-        "/services",
+        "/system-components",
         json={"name": "payment-api", "description": "Handles payments"},
     )
     assert first.status_code == 200
 
     second = client.post(
-        "/services",
+        "/system-components",
         json={"name": "payment-api", "description": "Duplicate"},
     )
     assert second.status_code == 409
-    assert second.json()["detail"] == "Service name already exists"
+    assert second.json()["detail"] == "System component name already exists"
     app.dependency_overrides.clear()

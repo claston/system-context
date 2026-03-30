@@ -2,22 +2,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.repositories.service_repository import (
-    DuplicateServiceNameError,
-    SqlAlchemyServiceRepository,
+from app.repositories.system_component_repository import (
+    DuplicateSystemComponentNameError,
+    SqlAlchemySystemComponentRepository,
 )
 
 
 def test_repository_create_list_get() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=engine
+    testing_session_local = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
     )
     Base.metadata.create_all(bind=engine)
 
-    db = TestingSessionLocal()
+    db = testing_session_local()
     try:
-        repo = SqlAlchemyServiceRepository(db)
+        repo = SqlAlchemySystemComponentRepository(db)
 
         created = repo.create(name="payment-api", description="Handles payments")
         assert created.id is not None
@@ -36,20 +38,22 @@ def test_repository_create_list_get() -> None:
 
 def test_repository_duplicate_name_raises_domain_error() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
-    TestingSessionLocal = sessionmaker(
-        autocommit=False, autoflush=False, bind=engine
+    testing_session_local = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=engine,
     )
     Base.metadata.create_all(bind=engine)
 
-    db = TestingSessionLocal()
+    db = testing_session_local()
     try:
-        repo = SqlAlchemyServiceRepository(db)
+        repo = SqlAlchemySystemComponentRepository(db)
         repo.create(name="payment-api", description="A")
 
         try:
             repo.create(name="payment-api", description="B")
-            assert False, "Expected DuplicateServiceNameError"
-        except DuplicateServiceNameError:
+            assert False, "Expected DuplicateSystemComponentNameError"
+        except DuplicateSystemComponentNameError:
             assert True
     finally:
         db.close()

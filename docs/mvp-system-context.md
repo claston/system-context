@@ -5,7 +5,7 @@
 Build a minimal API that provides structured system context for LLMs/agents.
 
 Primary goals:
-- Represent services and related metadata in a clean domain model
+- Represent system components and related metadata in a clean domain model
 - Expose this data through a simple API
 - Keep the base ready for future integration with connectors, normalization, and MCP
 
@@ -23,34 +23,35 @@ Current modules:
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-03-29)
+## 3. Implemented Scope (As of 2026-03-30)
 
 ### Implemented now
 
-- `Service` entity in database
-- Alembic migration for `service` table
-- Service API endpoints:
+- `SystemComponent` entity in database
+- Alembic migration for `system_component` table rename
+- SystemComponent API endpoints:
   - `GET /health`
-  - `POST /services`
-  - `GET /services`
-  - `GET /services/{service_id}`
+  - `POST /system-components`
+  - `GET /system-components`
+  - `GET /system-components/{system_component_id}`
 - Pydantic schemas for create and response payloads
 - DB session dependency in FastAPI
+- Repository + Application layers with dependency injection
 
 ### Not implemented yet
 
 - `Repository` entity and endpoints
-- Relationships (`Service <-> Repository`)
-- Context endpoint (`/context/service/{id}`)
+- Relationships (`SystemComponent <-> Repository`)
+- Context endpoint (`/context/system-component/{id}`)
 - Connectors layer (Git/K8s/OpenAPI/etc.)
 - Normalization layer
 - MCP/RAG integration
 
 ## 4. Data Model
 
-### Service (implemented)
+### SystemComponent (implemented)
 
-Table: `service`
+Table: `system_component`
 
 Fields:
 - `id` (UUID, PK)
@@ -67,7 +68,7 @@ Proposed fields:
 - `id` (UUID)
 - `name` (string)
 - `url` (string)
-- `service_id` (FK -> service.id)
+- `system_component_id` (FK -> system_component.id)
 - `created_at` (datetime)
 - `updated_at` (datetime)
 
@@ -80,7 +81,7 @@ Response:
 { "status": "ok" }
 ```
 
-### `POST /services`
+### `POST /system-components`
 
 Request:
 ```json
@@ -91,18 +92,18 @@ Request:
 ```
 
 Response:
-- Returns created `Service` with `id`, `created_at`, `updated_at`
+- Returns created `SystemComponent` with `id`, `created_at`, `updated_at`
 
-### `GET /services`
-
-Response:
-- List of `ServiceResponse`
-
-### `GET /services/{service_id}`
+### `GET /system-components`
 
 Response:
-- A single `ServiceResponse`
-- `404` when service does not exist
+- List of `SystemComponentResponse`
+
+### `GET /system-components/{system_component_id}`
+
+Response:
+- A single `SystemComponentResponse`
+- `404` when system component does not exist
 
 ## 6. Design Principles
 
@@ -114,7 +115,7 @@ Response:
 ## 7. Roadmap (Next Suggested Steps)
 
 1. Implement `Repository` model and migration
-2. Add `Service <-> Repository` relationship in ORM
+2. Add `SystemComponent <-> Repository` relationship in ORM
 3. Create Repository CRUD endpoints
 4. Add first basic context endpoint
 5. Introduce connector abstraction interface
