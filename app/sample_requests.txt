@@ -1,3 +1,4 @@
+# SystemComponent
 Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8000/system-components" `
   -ContentType "application/json" `
@@ -8,3 +9,18 @@ Invoke-RestMethod -Method Get `
 
 Invoke-RestMethod -Method Get `
   -Uri "http://127.0.0.1:8000/system-components/<SYSTEM_COMPONENT_ID>"
+
+# CodeRepo
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/code-repos" `
+  -ContentType "application/json" `
+  -Body '{"system_component_id":"<SYSTEM_COMPONENT_ID>","provider":"github","name":"payment-api","url":"https://github.com/org/payment-api","default_branch":"main"}'
+
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/code-repos"
+
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/code-repos/<CODE_REPO_ID>"
+
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/system-components/<SYSTEM_COMPONENT_ID>/code-repos"
