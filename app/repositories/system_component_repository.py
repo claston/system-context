@@ -4,7 +4,18 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import CodeRepo, SystemComponent
+from app.models import (
+    ApiContract,
+    CodeRepo,
+    Commit,
+    Dependency,
+    Deployment,
+    Endpoint,
+    PullRequest,
+    RuntimeSnapshot,
+    SyncRun,
+    SystemComponent,
+)
 
 
 class DuplicateSystemComponentNameError(Exception):
@@ -38,6 +49,42 @@ class CodeRepoRepository(Protocol):
     def get_by_id(self, code_repo_id: UUID) -> CodeRepo | None: ...
 
     def list_by_system_component(self, system_component_id: UUID) -> List[CodeRepo]: ...
+
+
+class ContextDataRepository(Protocol):
+    def list_code_repos(self) -> List[CodeRepo]: ...
+
+    def create_pull_request(self, **kwargs) -> PullRequest: ...
+
+    def list_pull_requests(self) -> List[PullRequest]: ...
+
+    def create_commit(self, **kwargs) -> Commit: ...
+
+    def list_commits(self) -> List[Commit]: ...
+
+    def create_deployment(self, **kwargs) -> Deployment: ...
+
+    def list_deployments(self) -> List[Deployment]: ...
+
+    def create_runtime_snapshot(self, **kwargs) -> RuntimeSnapshot: ...
+
+    def list_runtime_snapshots(self) -> List[RuntimeSnapshot]: ...
+
+    def create_api_contract(self, **kwargs) -> ApiContract: ...
+
+    def list_api_contracts(self) -> List[ApiContract]: ...
+
+    def create_endpoint(self, **kwargs) -> Endpoint: ...
+
+    def list_endpoints(self) -> List[Endpoint]: ...
+
+    def create_dependency(self, **kwargs) -> Dependency: ...
+
+    def list_dependencies(self) -> List[Dependency]: ...
+
+    def create_sync_run(self, **kwargs) -> SyncRun: ...
+
+    def list_sync_runs(self) -> List[SyncRun]: ...
 
 
 class SqlAlchemySystemComponentRepository:
@@ -129,5 +176,120 @@ class SqlAlchemyCodeRepoRepository:
         return (
             self.db.query(CodeRepo)
             .filter(CodeRepo.system_component_id == system_component_id)
+            .all()
+        )
+
+
+class SqlAlchemyContextDataRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def _create(self, model_class, **kwargs):
+        instance = model_class(**kwargs)
+        self.db.add(instance)
+        self.db.commit()
+        self.db.refresh(instance)
+        return instance
+
+    def list_code_repos(self) -> List[CodeRepo]:
+        return self.db.query(CodeRepo).all()
+
+    def create_pull_request(self, **kwargs) -> PullRequest:
+        return self._create(PullRequest, **kwargs)
+
+    def list_pull_requests(self) -> List[PullRequest]:
+        return self.db.query(PullRequest).all()
+
+    def create_commit(self, **kwargs) -> Commit:
+        return self._create(Commit, **kwargs)
+
+    def list_commits(self) -> List[Commit]:
+        return self.db.query(Commit).all()
+
+    def create_deployment(self, **kwargs) -> Deployment:
+        return self._create(Deployment, **kwargs)
+
+    def list_deployments(self) -> List[Deployment]:
+        return self.db.query(Deployment).all()
+
+    def create_runtime_snapshot(self, **kwargs) -> RuntimeSnapshot:
+        return self._create(RuntimeSnapshot, **kwargs)
+
+    def list_runtime_snapshots(self) -> List[RuntimeSnapshot]:
+        return self.db.query(RuntimeSnapshot).all()
+
+    def create_api_contract(self, **kwargs) -> ApiContract:
+        return self._create(ApiContract, **kwargs)
+
+    def list_api_contracts(self) -> List[ApiContract]:
+        return self.db.query(ApiContract).all()
+
+    def create_endpoint(self, **kwargs) -> Endpoint:
+        return self._create(Endpoint, **kwargs)
+
+    def list_endpoints(self) -> List[Endpoint]:
+        return self.db.query(Endpoint).all()
+
+    def create_dependency(self, **kwargs) -> Dependency:
+        return self._create(Dependency, **kwargs)
+
+    def list_dependencies(self) -> List[Dependency]:
+        return self.db.query(Dependency).all()
+
+    def create_sync_run(self, **kwargs) -> SyncRun:
+        return self._create(SyncRun, **kwargs)
+
+    def list_sync_runs(self) -> List[SyncRun]:
+        return self.db.query(SyncRun).all()
+
+    def get_system_component_by_name(self, system_component_name: str) -> SystemComponent | None:
+        return (
+            self.db.query(SystemComponent)
+            .filter(SystemComponent.name == system_component_name)
+            .first()
+        )
+
+    def get_latest_deployment_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> Deployment | None:
+        query = self.db.query(Deployment).filter(
+            Deployment.system_component_id == system_component_id
+        )
+        if environment:
+            query = query.filter(Deployment.environment == environment)
+        return query.order_by(Deployment.deployed_at.desc()).first()
+
+    def get_latest_runtime_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> RuntimeSnapshot | None:
+        query = self.db.query(RuntimeSnapshot).filter(
+            RuntimeSnapshot.system_component_id == system_component_id
+        )
+        if environment:
+            query = query.filter(RuntimeSnapshot.environment == environment)
+        return query.order_by(RuntimeSnapshot.captured_at.desc()).first()
+
+    def get_recent_pull_requests_count_for_system_component(
+        self, system_component_id: UUID
+    ) -> int:
+        return (
+            self.db.query(PullRequest)
+            .join(CodeRepo, PullRequest.code_repo_id == CodeRepo.id)
+            .filter(CodeRepo.system_component_id == system_component_id)
+            .count()
+        )
+
+    def get_recent_commits_count_for_system_component(self, system_component_id: UUID) -> int:
+        return (
+            self.db.query(Commit)
+            .join(CodeRepo, Commit.code_repo_id == CodeRepo.id)
+            .filter(CodeRepo.system_component_id == system_component_id)
+            .count()
+        )
+
+    def get_dependencies_for_system_component(self, system_component_id: UUID) -> List[Dependency]:
+        return (
+            self.db.query(Dependency)
+            .filter(Dependency.source_system_component_id == system_component_id)
             .all()
         )
