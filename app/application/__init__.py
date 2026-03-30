@@ -1,3 +1,6 @@
-from app.application.service_service import Service, ServiceNotFoundError
+from app.application.system_component_service import (
+    SystemComponentNotFoundError,
+    SystemComponentService,
+)
 
-__all__ = ["Service", "ServiceNotFoundError"]
+__all__ = ["SystemComponentNotFoundError", "SystemComponentService"]

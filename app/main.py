@@ -3,16 +3,17 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
-from app.application import Service, ServiceNotFoundError
+from app.application import SystemComponentNotFoundError, SystemComponentService
 from app.db import SessionLocal
 from app.repositories import (
-    DuplicateServiceNameError,
-    ServiceRepository,
-    SqlAlchemyServiceRepository,
+    DuplicateSystemComponentNameError,
+    SqlAlchemySystemComponentRepository,
+    SystemComponentRepository,
 )
-from app.schemas import ServiceCreate, ServiceResponse
+from app.schemas import SystemComponentCreate, SystemComponentResponse
 
 app = FastAPI()
+
 
 def get_db():
     db = SessionLocal()
@@ -22,14 +23,16 @@ def get_db():
         db.close()
 
 
-def get_service_repository(db: Session = Depends(get_db)) -> ServiceRepository:
-    return SqlAlchemyServiceRepository(db)
+def get_system_component_repository(
+    db: Session = Depends(get_db),
+) -> SystemComponentRepository:
+    return SqlAlchemySystemComponentRepository(db)
 
 
-def get_service_service(
-    repository: ServiceRepository = Depends(get_service_repository),
-) -> Service:
-    return Service(repository)
+def get_system_component_service(
+    repository: SystemComponentRepository = Depends(get_system_component_repository),
+) -> SystemComponentService:
+    return SystemComponentService(repository)
 
 
 @app.get("/health")
@@ -37,27 +40,36 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/services", response_model=ServiceResponse)
-def create_service(
-    service: ServiceCreate,
-    service_service: Service = Depends(get_service_service),
+@app.post("/system-components", response_model=SystemComponentResponse)
+def create_system_component(
+    system_component: SystemComponentCreate,
+    component_service: SystemComponentService = Depends(get_system_component_service),
 ):
     try:
-        return service_service.create(name=service.name, description=service.description)
-    except DuplicateServiceNameError as exc:
-        raise HTTPException(status_code=409, detail="Service name already exists") from exc
+        return component_service.create(
+            name=system_component.name,
+            description=system_component.description,
+        )
+    except DuplicateSystemComponentNameError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="System component name already exists",
+        ) from exc
 
 
-@app.get("/services", response_model=list[ServiceResponse])
-def list_services(service_service: Service = Depends(get_service_service)):
-    return service_service.list()
+@app.get("/system-components", response_model=list[SystemComponentResponse])
+def list_system_components(
+    component_service: SystemComponentService = Depends(get_system_component_service),
+):
+    return component_service.list()
 
 
-@app.get("/services/{service_id}", response_model=ServiceResponse)
-def get_service(
-    service_id: UUID, service_service: Service = Depends(get_service_service)
+@app.get("/system-components/{system_component_id}", response_model=SystemComponentResponse)
+def get_system_component(
+    system_component_id: UUID,
+    component_service: SystemComponentService = Depends(get_system_component_service),
 ):
     try:
-        return service_service.get_by_id(service_id)
-    except ServiceNotFoundError:
-        raise HTTPException(status_code=404, detail="Service not found")
+        return component_service.get_by_id(system_component_id)
+    except SystemComponentNotFoundError:
+        raise HTTPException(status_code=404, detail="System component not found")

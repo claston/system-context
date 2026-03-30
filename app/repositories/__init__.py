@@ -1,11 +1,11 @@
-from app.repositories.service_repository import (
-    DuplicateServiceNameError,
-    ServiceRepository,
-    SqlAlchemyServiceRepository,
+from app.repositories.system_component_repository import (
+    DuplicateSystemComponentNameError,
+    SqlAlchemySystemComponentRepository,
+    SystemComponentRepository,
 )
 
 __all__ = [
-    "DuplicateServiceNameError",
-    "ServiceRepository",
-    "SqlAlchemyServiceRepository",
+    "DuplicateSystemComponentNameError",
+    "SqlAlchemySystemComponentRepository",
+    "SystemComponentRepository",
 ]

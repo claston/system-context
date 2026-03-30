@@ -1,4 +1,10 @@
 Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/services" `
+  -Uri "http://127.0.0.1:8000/system-components" `
   -ContentType "application/json" `
-  -Body '{"name":"payment-api","description":"API de pagamento"}'
+  -Body '{"name":"payment-api","description":"System component for payments"}'
+
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/system-components"
+
+Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8000/system-components/<SYSTEM_COMPONENT_ID>"
