@@ -3,12 +3,13 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
-from app.main import app, get_service_repository
+from app.application import ServiceNotFoundError
+from app.main import app, get_service_service
 from app.models import Service
 from app.repositories import DuplicateServiceNameError
 
 
-class FakeServiceRepository:
+class FakeService:
     def __init__(self) -> None:
         self._items: dict[UUID, Service] = {}
 
@@ -29,18 +30,21 @@ class FakeServiceRepository:
     def list(self) -> list[Service]:
         return list(self._items.values())
 
-    def get_by_id(self, service_id: UUID) -> Service | None:
-        return self._items.get(service_id)
+    def get_by_id(self, service_id: UUID) -> Service:
+        service = self._items.get(service_id)
+        if not service:
+            raise ServiceNotFoundError
+        return service
 
 
-def build_client(repo: FakeServiceRepository) -> TestClient:
-    app.dependency_overrides[get_service_repository] = lambda: repo
+def build_client(service: FakeService) -> TestClient:
+    app.dependency_overrides[get_service_service] = lambda: service
     return TestClient(app)
 
 
 def test_create_service() -> None:
-    repo = FakeServiceRepository()
-    client = build_client(repo)
+    service = FakeService()
+    client = build_client(service)
 
     response = client.post(
         "/services",
@@ -58,10 +62,10 @@ def test_create_service() -> None:
 
 
 def test_list_services() -> None:
-    repo = FakeServiceRepository()
-    repo.create(name="payment-api", description="A")
-    repo.create(name="ledger-api", description="B")
-    client = build_client(repo)
+    service = FakeService()
+    service.create(name="payment-api", description="A")
+    service.create(name="ledger-api", description="B")
+    client = build_client(service)
 
     response = client.get("/services")
 
@@ -73,13 +77,13 @@ def test_list_services() -> None:
 
 
 def test_get_service_by_id_and_not_found() -> None:
-    repo = FakeServiceRepository()
-    service = repo.create(name="payment-api", description="A")
-    client = build_client(repo)
+    service = FakeService()
+    created = service.create(name="payment-api", description="A")
+    client = build_client(service)
 
-    found = client.get(f"/services/{service.id}")
+    found = client.get(f"/services/{created.id}")
     assert found.status_code == 200
-    assert found.json()["id"] == str(service.id)
+    assert found.json()["id"] == str(created.id)
 
     missing = client.get(f"/services/{uuid4()}")
     assert missing.status_code == 404
@@ -88,8 +92,8 @@ def test_get_service_by_id_and_not_found() -> None:
 
 
 def test_create_service_duplicate_name_returns_409() -> None:
-    repo = FakeServiceRepository()
-    client = build_client(repo)
+    service = FakeService()
+    client = build_client(service)
 
     first = client.post(
         "/services",
