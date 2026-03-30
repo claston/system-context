@@ -29,19 +29,24 @@ Current modules:
 
 - `SystemComponent` entity in database
 - Alembic migration for `system_component` table rename
+- `CodeRepo` entity in database
+- Alembic migration for `code_repo` table
 - SystemComponent API endpoints:
   - `GET /health`
   - `POST /system-components`
   - `GET /system-components`
   - `GET /system-components/{system_component_id}`
+- CodeRepo API endpoints:
+  - `POST /code-repos`
+  - `GET /code-repos`
+  - `GET /code-repos/{code_repo_id}`
+  - `GET /system-components/{system_component_id}/code-repos`
 - Pydantic schemas for create and response payloads
 - DB session dependency in FastAPI
-- Repository + Application layers with dependency injection
+- Persistence + Application layers with dependency injection
 
 ### Not implemented yet
 
-- `Repository` entity and endpoints
-- Relationships (`SystemComponent <-> Repository`)
 - Context endpoint (`/context/system-component/{id}`)
 - Connectors layer (Git/K8s/OpenAPI/etc.)
 - Normalization layer
@@ -60,17 +65,22 @@ Fields:
 - `created_at` (datetime with timezone)
 - `updated_at` (datetime with timezone)
 
-### Repository (planned)
+### CodeRepo (implemented)
 
-Not implemented in code yet.
+Table: `code_repo`
 
-Proposed fields:
-- `id` (UUID)
-- `name` (string)
-- `url` (string)
-- `system_component_id` (FK -> system_component.id)
-- `created_at` (datetime)
-- `updated_at` (datetime)
+Fields:
+- `id` (UUID, PK)
+- `system_component_id` (UUID, FK -> `system_component.id`)
+- `provider` (string, required)
+- `name` (string, required)
+- `url` (string, required)
+- `default_branch` (string, optional)
+- `created_at` (datetime with timezone)
+- `updated_at` (datetime with timezone)
+
+Constraints:
+- unique (`provider`, `name`)
 
 ## 5. API Contract (Current)
 
@@ -105,6 +115,41 @@ Response:
 - A single `SystemComponentResponse`
 - `404` when system component does not exist
 
+### `POST /code-repos`
+
+Request:
+```json
+{
+  "system_component_id": "UUID",
+  "provider": "github",
+  "name": "payment-api",
+  "url": "https://github.com/org/payment-api",
+  "default_branch": "main"
+}
+```
+
+Response:
+- Returns created `CodeRepo` with metadata/timestamps
+- `404` when `system_component_id` does not exist
+- `409` for duplicate (`provider`, `name`)
+
+### `GET /code-repos`
+
+Response:
+- List of `CodeRepoResponse`
+
+### `GET /code-repos/{code_repo_id}`
+
+Response:
+- A single `CodeRepoResponse`
+- `404` when code repo does not exist
+
+### `GET /system-components/{system_component_id}/code-repos`
+
+Response:
+- List of `CodeRepoResponse` linked to a system component
+- `404` when system component does not exist
+
 ## 6. Design Principles
 
 - Keep the MVP small and understandable
@@ -114,14 +159,54 @@ Response:
 
 ## 7. Roadmap (Next Suggested Steps)
 
-1. Implement `Repository` model and migration
-2. Add `SystemComponent <-> Repository` relationship in ORM
-3. Create Repository CRUD endpoints
-4. Add first basic context endpoint
+1. Harden `SystemComponent` validations (input rules and error semantics)
+2. Harden `CodeRepo` validations (provider/name/url rules)
+3. Expand unit/integration coverage for edge cases
+4. Add first basic context endpoint for `SystemComponent`
 5. Introduce connector abstraction interface
 6. Introduce minimal normalization pipeline
+7. Add MCP exposure as a thin layer on top of application services
 
-## 8. Future Concept (Planned)
+## 8. Gap Analysis vs PDF Specs
+
+The PDFs in `docs/` define a broader MVP than the current codebase.
+
+If we follow those PDF specs strictly, the main missing pieces are:
+
+### Missing entities/tables (from PDFs, adapted to current naming decisions)
+
+- `pull_request`
+- `commit`
+- `deployment`
+- `runtime_snapshot`
+- `api_contract`
+- `endpoint`
+- `dependency`
+- `sync_run`
+
+### Missing API surface (from PDFs, adapted to current naming decisions)
+
+- `POST /agent/context`
+- `GET /context/system/current-state`
+- `GET /context/system-component/{name}`
+- `GET /context/system-component/{name}/changes`
+- `GET /context/system-component/{name}/runtime`
+- `GET /context/system-component/{name}/dependencies`
+
+### Missing platform capabilities (from PDFs)
+
+- connector abstractions and first connector implementations (Git/Kubernetes/OpenAPI/Deploy)
+- normalization layer turning source payloads into internal semantic models
+- sync jobs and freshness tracking
+- MCP server exposing application-layer context tools
+
+Note:
+- Current project scope intentionally focuses on `SystemComponent` first.
+- The PDFs still use older names (`service`, `repository`), but this project
+  standardizes on `system_component` and `code_repo`.
+- The list above is the PDF-defined expansion path, normalized to current naming.
+
+## 9. Future Concept (Planned)
 
 ### Connectors
 
@@ -142,7 +227,7 @@ Should not:
 Transforms raw connector data into clean domain context.
 
 Examples:
-- Git repo -> `Repository`
+- Git source metadata -> internal context model
 - K8s deployment -> runtime snapshot
 - OpenAPI spec -> API contract model
 
