@@ -13,7 +13,7 @@ on:
       - main
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: sqlite+pysqlite:///./ci.db
@@ -30,6 +30,9 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+
+      - name: Lint (Ruff)
+        run: ruff check .
 
       - name: Run unit tests
         run: pytest -q
