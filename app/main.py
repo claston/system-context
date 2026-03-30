@@ -1,7 +1,8 @@
 from uuid import UUID
-from fastapi import FastAPI, HTTPException
-from fastapi import Depends
+
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
+
 from app.db import SessionLocal
 from app.repositories import (
     DuplicateServiceNameError,
