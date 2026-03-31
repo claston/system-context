@@ -23,7 +23,7 @@ Current modules:
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-03-30)
+## 3. Implemented Scope (As of 2026-03-31)
 
 ### Implemented now
 
@@ -31,6 +31,15 @@ Current modules:
 - Alembic migration for `system_component` table rename
 - `CodeRepo` entity in database
 - Alembic migration for `code_repo` table
+- Context entities in database:
+  - `pull_request`
+  - `commit`
+  - `deployment`
+  - `runtime_snapshot`
+  - `api_contract`
+  - `endpoint`
+  - `dependency`
+  - `sync_run`
 - SystemComponent API endpoints:
   - `GET /health`
   - `POST /system-components`
@@ -41,13 +50,28 @@ Current modules:
   - `GET /code-repos`
   - `GET /code-repos/{code_repo_id}`
   - `GET /system-components/{system_component_id}/code-repos`
+- Context CRUD/list endpoints:
+  - `POST/GET /pull-requests`
+  - `POST/GET /commits`
+  - `POST/GET /deployments`
+  - `POST/GET /runtime-snapshots`
+  - `POST/GET /api-contracts`
+  - `POST/GET /endpoints`
+  - `POST/GET /dependencies`
+  - `POST/GET /sync-runs`
+- Context aggregation endpoints:
+  - `POST /agent/context`
+  - `GET /context/system/current-state`
+  - `GET /context/system-component/{name}`
+  - `GET /context/system-component/{name}/changes`
+  - `GET /context/system-component/{name}/runtime`
+  - `GET /context/system-component/{name}/dependencies`
 - Pydantic schemas for create and response payloads
 - DB session dependency in FastAPI
 - Persistence + Application layers with dependency injection
 
 ### Not implemented yet
 
-- Context endpoint (`/context/system-component/{id}`)
 - Connectors layer (Git/K8s/OpenAPI/etc.)
 - Normalization layer
 - MCP/RAG integration
@@ -81,6 +105,21 @@ Fields:
 
 Constraints:
 - unique (`provider`, `name`)
+
+### Context Entities (implemented)
+
+Tables:
+- `pull_request`
+- `commit`
+- `deployment`
+- `runtime_snapshot`
+- `api_contract`
+- `endpoint`
+- `dependency`
+- `sync_run`
+
+Note:
+- All context entities currently have `POST` + `GET` list endpoints and are used by context aggregation APIs.
 
 ## 5. API Contract (Current)
 
@@ -150,6 +189,26 @@ Response:
 - List of `CodeRepoResponse` linked to a system component
 - `404` when system component does not exist
 
+### Context CRUD/List APIs (current)
+
+- `POST/GET /pull-requests`
+- `POST/GET /commits`
+- `POST/GET /deployments`
+- `POST/GET /runtime-snapshots`
+- `POST/GET /api-contracts`
+- `POST/GET /endpoints`
+- `POST/GET /dependencies`
+- `POST/GET /sync-runs`
+
+### Context Query APIs (current)
+
+- `POST /agent/context`
+- `GET /context/system/current-state`
+- `GET /context/system-component/{name}`
+- `GET /context/system-component/{name}/changes`
+- `GET /context/system-component/{name}/runtime`
+- `GET /context/system-component/{name}/dependencies`
+
 ## 6. Design Principles
 
 - Keep the MVP small and understandable
@@ -162,36 +221,17 @@ Response:
 1. Harden `SystemComponent` validations (input rules and error semantics)
 2. Harden `CodeRepo` validations (provider/name/url rules)
 3. Expand unit/integration coverage for edge cases
-4. Add first basic context endpoint for `SystemComponent`
+4. Harden context-entity validation rules and error semantics
 5. Introduce connector abstraction interface
-6. Introduce minimal normalization pipeline
-7. Add MCP exposure as a thin layer on top of application services
+6. Introduce first connector implementations (Git/runtime/OpenAPI)
+7. Introduce minimal normalization pipeline
+8. Add MCP exposure as a thin layer on top of application services
 
 ## 8. Gap Analysis vs PDF Specs
 
 The PDFs in `docs/` define a broader MVP than the current codebase.
 
-If we follow those PDF specs strictly, the main missing pieces are:
-
-### Missing entities/tables (from PDFs, adapted to current naming decisions)
-
-- `pull_request`
-- `commit`
-- `deployment`
-- `runtime_snapshot`
-- `api_contract`
-- `endpoint`
-- `dependency`
-- `sync_run`
-
-### Missing API surface (from PDFs, adapted to current naming decisions)
-
-- `POST /agent/context`
-- `GET /context/system/current-state`
-- `GET /context/system-component/{name}`
-- `GET /context/system-component/{name}/changes`
-- `GET /context/system-component/{name}/runtime`
-- `GET /context/system-component/{name}/dependencies`
+If we follow those PDF specs strictly, the main missing pieces are now platform capabilities (not base entities/endpoints):
 
 ### Missing platform capabilities (from PDFs)
 
