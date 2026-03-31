@@ -26,6 +26,14 @@ class DuplicateCodeRepoError(Exception):
     pass
 
 
+class DuplicateContextEntityError(Exception):
+    pass
+
+
+class ContextEntityReferenceNotFoundError(Exception):
+    pass
+
+
 class SystemComponentRepository(Protocol):
     def create(self, name: str, description: str | None = None) -> SystemComponent: ...
 
@@ -186,10 +194,25 @@ class SqlAlchemyContextDataRepository:
 
     def _create(self, model_class, **kwargs):
         instance = model_class(**kwargs)
-        self.db.add(instance)
-        self.db.commit()
-        self.db.refresh(instance)
-        return instance
+        try:
+            self.db.add(instance)
+            self.db.commit()
+            self.db.refresh(instance)
+            return instance
+        except IntegrityError as exc:
+            self.db.rollback()
+            orig = exc.orig
+            pgcode = getattr(orig, "pgcode", None)
+            message = str(orig)
+            is_unique_violation = pgcode == "23505" or "UNIQUE constraint failed" in message
+            is_foreign_key_violation = (
+                pgcode == "23503" or "FOREIGN KEY constraint failed" in message
+            )
+            if is_unique_violation:
+                raise DuplicateContextEntityError from exc
+            if is_foreign_key_violation:
+                raise ContextEntityReferenceNotFoundError from exc
+            raise
 
     def list_code_repos(self) -> List[CodeRepo]:
         return self.db.query(CodeRepo).all()

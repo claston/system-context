@@ -1,7 +1,9 @@
 from app.repositories.system_component_repository import (
     CodeRepoRepository,
     ContextDataRepository,
+    ContextEntityReferenceNotFoundError,
     DuplicateCodeRepoError,
+    DuplicateContextEntityError,
     DuplicateSystemComponentNameError,
     SqlAlchemyCodeRepoRepository,
     SqlAlchemyContextDataRepository,
@@ -12,7 +14,9 @@ from app.repositories.system_component_repository import (
 __all__ = [
     "ContextDataRepository",
     "CodeRepoRepository",
+    "ContextEntityReferenceNotFoundError",
     "DuplicateCodeRepoError",
+    "DuplicateContextEntityError",
     "DuplicateSystemComponentNameError",
     "SqlAlchemyContextDataRepository",
     "SqlAlchemyCodeRepoRepository",

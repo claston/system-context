@@ -24,7 +24,7 @@ def create_code_repo(
             system_component_id=code_repo.system_component_id,
             provider=code_repo.provider,
             name=code_repo.name,
-            url=code_repo.url,
+            url=str(code_repo.url),
             default_branch=code_repo.default_branch,
         )
     except SystemComponentNotFoundError:
