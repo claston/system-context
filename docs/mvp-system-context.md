@@ -227,7 +227,15 @@ Response:
 7. Introduce minimal normalization pipeline
 8. Add MCP exposure as a thin layer on top of application services
 
-## 8. Gap Analysis vs PDF Specs
+## 8. Practical Direction To Keep Focus
+
+1. Standardize a canonical context model (entities and relationships)
+2. Prioritize high-value connectors first (Git, deploy/runtime, observability)
+3. Implement normalization plus confidence/freshness scoring for ingested data
+4. Expose APIs for current state, recent changes, and risk signals
+5. Add autonomy guardrails (action limits, human approval, audit trail)
+
+## 9. Gap Analysis vs PDF Specs
 
 The PDFs in `docs/` define a broader MVP than the current codebase.
 
@@ -246,7 +254,7 @@ Note:
   standardizes on `system_component` and `code_repo`.
 - The list above is the PDF-defined expansion path, normalized to current naming.
 
-## 9. Future Concept (Planned)
+## 10. Future Concept (Planned)
 
 ### Connectors
 
