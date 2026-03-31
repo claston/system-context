@@ -53,3 +53,121 @@ class CodeRepo(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class PullRequest(Base):
+    __tablename__ = "pull_request"
+    __table_args__ = (
+        UniqueConstraint("code_repo_id", "number", name="pull_request_repo_number_key"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code_repo_id = Column(UUID(as_uuid=True), ForeignKey("code_repo.id", ondelete="CASCADE"), nullable=False)
+    number = Column(String(50), nullable=False)
+    title = Column(String(500), nullable=False)
+    status = Column(String(50), nullable=False, default="open")
+    author = Column(String(255), nullable=True)
+    url = Column(String(1000), nullable=True)
+    merged_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Commit(Base):
+    __tablename__ = "commit"
+    __table_args__ = (
+        UniqueConstraint("code_repo_id", "sha", name="commit_repo_sha_key"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code_repo_id = Column(UUID(as_uuid=True), ForeignKey("code_repo.id", ondelete="CASCADE"), nullable=False)
+    pull_request_id = Column(UUID(as_uuid=True), ForeignKey("pull_request.id", ondelete="SET NULL"), nullable=True)
+    sha = Column(String(128), nullable=False)
+    message = Column(String(1000), nullable=False)
+    author = Column(String(255), nullable=True)
+    committed_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Deployment(Base):
+    __tablename__ = "deployment"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
+    environment = Column(String(100), nullable=False)
+    version = Column(String(255), nullable=False)
+    source = Column(String(100), nullable=True)
+    status = Column(String(50), nullable=False, default="success")
+    deployed_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class RuntimeSnapshot(Base):
+    __tablename__ = "runtime_snapshot"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
+    environment = Column(String(100), nullable=False)
+    captured_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    pod_count = Column(String(50), nullable=True)
+    restart_count = Column(String(50), nullable=True)
+    health_status = Column(String(50), nullable=True)
+    image_tag = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ApiContract(Base):
+    __tablename__ = "api_contract"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
+    source = Column(String(255), nullable=False)
+    version = Column(String(255), nullable=True)
+    raw_location = Column(String(1000), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Endpoint(Base):
+    __tablename__ = "endpoint"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    api_contract_id = Column(UUID(as_uuid=True), ForeignKey("api_contract.id", ondelete="CASCADE"), nullable=False)
+    method = Column(String(20), nullable=False)
+    path = Column(String(1000), nullable=False)
+    operation_id = Column(String(255), nullable=True)
+    summary = Column(String(1000), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Dependency(Base):
+    __tablename__ = "dependency"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
+    target_system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
+    dependency_type = Column(String(100), nullable=False, default="http")
+    confidence = Column(String(50), nullable=True)
+    discovered_from = Column(String(100), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_run"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connector_name = Column(String(100), nullable=False)
+    status = Column(String(50), nullable=False)
+    records_processed = Column(String(50), nullable=True)
+    error_summary = Column(String(1000), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
