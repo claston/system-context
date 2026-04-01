@@ -94,6 +94,10 @@ class ContextDataRepository(Protocol):
 
     def list_sync_runs(self) -> List[SyncRun]: ...
 
+    def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None: ...
+
+    def update_sync_run(self, sync_run_id: UUID, **kwargs) -> SyncRun: ...
+
 
 class SqlAlchemySystemComponentRepository:
     def __init__(self, db: Session) -> None:
@@ -264,6 +268,20 @@ class SqlAlchemyContextDataRepository:
 
     def list_sync_runs(self) -> List[SyncRun]:
         return self.db.query(SyncRun).all()
+
+    def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None:
+        return self.db.query(SyncRun).filter(SyncRun.id == sync_run_id).first()
+
+    def update_sync_run(self, sync_run_id: UUID, **kwargs) -> SyncRun:
+        item = self.get_sync_run_by_id(sync_run_id)
+        if item is None:
+            raise ContextEntityReferenceNotFoundError
+        for key, value in kwargs.items():
+            setattr(item, key, value)
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
 
     def get_system_component_by_name(self, system_component_name: str) -> SystemComponent | None:
         return (

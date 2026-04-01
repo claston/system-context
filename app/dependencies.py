@@ -1,7 +1,16 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.application import CodeRepoService, ContextService, SyncService, SystemComponentService
+from app.application import (
+    CodeRepoService,
+    ContextService,
+    SyncJobDispatcher,
+    SyncService,
+    SystemComponentService,
+    ThreadPoolSyncJobDispatcher,
+)
 from app.connectors import GithubConnector
 from app.db import SessionLocal
 from app.repositories import (
@@ -10,6 +19,8 @@ from app.repositories import (
     SqlAlchemySystemComponentRepository,
     SystemComponentRepository,
 )
+
+_sync_executor = ThreadPoolExecutor(max_workers=2)
 
 
 def get_db():
@@ -59,8 +70,17 @@ def get_github_connector() -> GithubConnector:
     return GithubConnector()
 
 
+def get_sync_job_dispatcher() -> SyncJobDispatcher:
+    return ThreadPoolSyncJobDispatcher(executor=_sync_executor)
+
+
 def get_sync_service(
     context_repository=Depends(get_context_data_repository),
     github_connector: GithubConnector = Depends(get_github_connector),
+    job_dispatcher: SyncJobDispatcher = Depends(get_sync_job_dispatcher),
 ) -> SyncService:
-    return SyncService(context_repository=context_repository, github_connector=github_connector)
+    return SyncService(
+        context_repository=context_repository,
+        github_connector=github_connector,
+        job_dispatcher=job_dispatcher,
+    )
