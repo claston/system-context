@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 AllowedProvider = Literal["github", "gitlab", "bitbucket", "azuredevops"]
 PullRequestStatus = Literal["open", "closed", "merged"]
@@ -162,8 +162,8 @@ class RuntimeSnapshotCreate(BaseModel):
     system_component_id: UUID
     environment: str = Field(min_length=1, max_length=100)
     captured_at: datetime | None = None
-    pod_count: str | None = Field(default=None, max_length=50)
-    restart_count: str | None = Field(default=None, max_length=50)
+    pod_count: int | None = Field(default=None, ge=0)
+    restart_count: int | None = Field(default=None, ge=0)
     health_status: str | None = Field(default=None, max_length=50)
     image_tag: str | None = Field(default=None, max_length=255)
 
@@ -180,8 +180,8 @@ class RuntimeSnapshotResponse(BaseModel):
     system_component_id: UUID
     environment: str
     captured_at: datetime
-    pod_count: str | None = None
-    restart_count: str | None = None
+    pod_count: int | None = None
+    restart_count: int | None = None
     health_status: str | None = None
     image_tag: str | None = None
     created_at: datetime
@@ -266,7 +266,7 @@ class DependencyResponse(BaseModel):
 class SyncRunCreate(BaseModel):
     connector_name: str = Field(min_length=1, max_length=100)
     status: SyncRunStatus
-    records_processed: str | None = Field(default=None, max_length=50)
+    records_processed: int | None = Field(default=None, ge=0)
     error_summary: str | None = Field(default=None, max_length=1000)
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -276,6 +276,16 @@ class SyncRunCreate(BaseModel):
     def validate_connector_name(cls, value: str) -> str:
         return _normalize_non_empty(value)
 
+    @model_validator(mode="after")
+    def validate_time_window(self):
+        if (
+            self.started_at is not None
+            and self.finished_at is not None
+            and self.finished_at < self.started_at
+        ):
+            raise ValueError("finished_at must be greater than or equal to started_at")
+        return self
+
 
 class SyncRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -283,7 +293,7 @@ class SyncRunResponse(BaseModel):
     id: UUID
     connector_name: str
     status: str
-    records_processed: str | None = None
+    records_processed: int | None = None
     error_summary: str | None = None
     started_at: datetime
     finished_at: datetime | None = None

@@ -93,8 +93,8 @@ def test_entities_and_context_endpoints() -> None:
             "system_component_id": sc_id,
             "environment": "prod",
             "health_status": "healthy",
-            "pod_count": "3",
-            "restart_count": "0",
+            "pod_count": 3,
+            "restart_count": 0,
         },
     )
     assert runtime_snapshot.status_code == 200
