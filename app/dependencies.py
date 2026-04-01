@@ -1,7 +1,8 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.application import CodeRepoService, ContextService, SystemComponentService
+from app.application import CodeRepoService, ContextService, SyncService, SystemComponentService
+from app.connectors import GithubConnector
 from app.db import SessionLocal
 from app.repositories import (
     SqlAlchemyCodeRepoRepository,
@@ -52,3 +53,14 @@ def get_context_service(
     context_repository=Depends(get_context_data_repository),
 ) -> ContextService:
     return ContextService(context_repository)
+
+
+def get_github_connector() -> GithubConnector:
+    return GithubConnector()
+
+
+def get_sync_service(
+    context_repository=Depends(get_context_data_repository),
+    github_connector: GithubConnector = Depends(get_github_connector),
+) -> SyncService:
+    return SyncService(context_repository=context_repository, github_connector=github_connector)

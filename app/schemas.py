@@ -301,6 +301,17 @@ class SyncRunResponse(BaseModel):
     updated_at: datetime
 
 
+class GithubSyncRunRequest(BaseModel):
+    system_component_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("system_component_name")
+    @classmethod
+    def validate_system_component_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty(value)
+
+
 class AgentContextRequest(BaseModel):
     system_component_name: str = Field(min_length=1, max_length=255)
     environment: str | None = Field(default=None, max_length=100)
