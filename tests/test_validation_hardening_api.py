@@ -134,3 +134,61 @@ def test_create_duplicate_pull_request_returns_409() -> None:
     assert second.status_code == 409
     assert second.json()["detail"] == "Resource already exists"
     app.dependency_overrides.clear()
+
+
+def test_create_runtime_snapshot_with_non_integer_counts_returns_400() -> None:
+    client = build_test_client()
+    system_component = client.post(
+        "/system-components",
+        json={"name": "runtime-api", "description": "runtime"},
+    )
+    sc_id = system_component.json()["id"]
+
+    response = client.post(
+        "/runtime-snapshots",
+        json={
+            "system_component_id": sc_id,
+            "environment": "prod",
+            "pod_count": "three",
+            "restart_count": "zero",
+            "health_status": "healthy",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Validation failed"
+    app.dependency_overrides.clear()
+
+
+def test_create_sync_run_with_non_integer_records_processed_returns_400() -> None:
+    client = build_test_client()
+    response = client.post(
+        "/sync-runs",
+        json={
+            "connector_name": "github",
+            "status": "success",
+            "records_processed": "many",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Validation failed"
+    app.dependency_overrides.clear()
+
+
+def test_create_sync_run_with_finished_before_started_returns_400() -> None:
+    client = build_test_client()
+    response = client.post(
+        "/sync-runs",
+        json={
+            "connector_name": "github",
+            "status": "success",
+            "records_processed": 10,
+            "started_at": "2026-03-31T10:00:00Z",
+            "finished_at": "2026-03-31T09:00:00Z",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Validation failed"
+    app.dependency_overrides.clear()

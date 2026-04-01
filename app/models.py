@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db import Base
@@ -111,8 +111,8 @@ class RuntimeSnapshot(Base):
     system_component_id = Column(UUID(as_uuid=True), ForeignKey("system_component.id", ondelete="CASCADE"), nullable=False)
     environment = Column(String(100), nullable=False)
     captured_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    pod_count = Column(String(50), nullable=True)
-    restart_count = Column(String(50), nullable=True)
+    pod_count = Column(Integer, nullable=True)
+    restart_count = Column(Integer, nullable=True)
     health_status = Column(String(50), nullable=True)
     image_tag = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -165,7 +165,7 @@ class SyncRun(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     connector_name = Column(String(100), nullable=False)
     status = Column(String(50), nullable=False)
-    records_processed = Column(String(50), nullable=True)
+    records_processed = Column(Integer, nullable=True)
     error_summary = Column(String(1000), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     finished_at = Column(DateTime(timezone=True), nullable=True)
