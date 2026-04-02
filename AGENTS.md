@@ -19,6 +19,10 @@ This document defines the default execution rules for this repository.
    - run tests again and confirm success
 2. Keep refactors incremental and verifiable.
 3. Use Conventional Commits for every commit.
+4. Always run Python tooling through the project virtual environment (`venv\Scripts\python.exe`) instead of global Python.
+   - Examples:
+     - `venv\Scripts\python.exe -m pytest -q`
+     - `venv\Scripts\python.exe -m pip install -r requirements.txt`
 
 ## Validation Rules
 

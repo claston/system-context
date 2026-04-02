@@ -23,7 +23,7 @@ Current modules:
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-03-31)
+## 3. Implemented Scope (As of 2026-04-02)
 
 ### Implemented now
 
@@ -59,6 +59,9 @@ Current modules:
   - `POST/GET /endpoints`
   - `POST/GET /dependencies`
   - `POST/GET /sync-runs`
+- Sync orchestration endpoints:
+  - `POST /sync-runs/github`
+  - `GET /sync-runs/{sync_run_id}`
 - Context aggregation endpoints:
   - `POST /agent/context`
   - `GET /context/system/current-state`
@@ -69,10 +72,13 @@ Current modules:
 - Pydantic schemas for create and response payloads
 - DB session dependency in FastAPI
 - Persistence + Application layers with dependency injection
+- Connector abstraction contracts (`ConnectorRunRequest`, `ConnectorBatch`, `Connector` protocol)
+- First connector implementation (GitHub connector, initial stub)
+- Async sync job dispatching via thread pool and sync run status lifecycle (`running/success/failed`)
 
 ### Not implemented yet
 
-- Connectors layer (Git/K8s/OpenAPI/etc.)
+- Additional connector implementations beyond initial GitHub flow (runtime/OpenAPI/K8s/etc.)
 - Normalization layer
 - MCP/RAG integration
 
@@ -218,14 +224,16 @@ Response:
 
 ## 7. Roadmap (Next Suggested Steps)
 
-1. Harden `SystemComponent` validations (input rules and error semantics)
-2. Harden `CodeRepo` validations (provider/name/url rules)
-3. Expand unit/integration coverage for edge cases
-4. Harden context-entity validation rules and error semantics
-5. Introduce connector abstraction interface
-6. Introduce first connector implementations (Git/runtime/OpenAPI)
-7. Introduce minimal normalization pipeline
-8. Add MCP exposure as a thin layer on top of application services
+1. [Done] Harden `SystemComponent` validations (input rules and error semantics)
+2. [Done] Harden `CodeRepo` validations (provider/name/url rules)
+3. [Done] Expand unit/integration coverage for edge cases
+4. [Done] Harden context-entity validation rules and error semantics
+5. [Done] Introduce connector abstraction interface
+6. [In progress] Introduce first connector implementations (Git/runtime/OpenAPI)
+   - Current status: GitHub connector + sync trigger flow implemented
+   - Remaining scope: runtime/OpenAPI connectors
+7. [Next] Introduce minimal normalization pipeline
+8. [Next] Add MCP exposure as a thin layer on top of application services
 
 ## 8. Practical Direction To Keep Focus
 
