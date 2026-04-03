@@ -102,7 +102,10 @@ def test_sync_service_triggers_running_and_dispatches_job() -> None:
         job_dispatcher=dispatcher,
     )
 
-    result = service.trigger_github_sync(system_component_name="payment-api")
+    result = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
     assert result["status"] == "running"
     assert result["records_processed"] == 0
@@ -123,9 +126,16 @@ def test_sync_service_executes_and_marks_success() -> None:
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
     )
-    running = service.trigger_github_sync(system_component_name="payment-api")
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
-    result = service.execute_github_sync(running["id"], system_component_name="payment-api")
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
     assert result["status"] == "success"
     assert result["records_processed"] == 2
@@ -142,9 +152,16 @@ def test_sync_service_executes_and_marks_failed() -> None:
         connectors={"github": FakeGithubConnector(should_fail=True)},
         job_dispatcher=dispatcher,
     )
-    running = service.trigger_github_sync(system_component_name="payment-api")
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
-    result = service.execute_github_sync(running["id"], system_component_name="payment-api")
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
     assert result["status"] == "failed"
     assert result["records_processed"] == 0
@@ -180,10 +197,17 @@ def test_execute_sync_uses_repository_scope_for_background_updates() -> None:
         job_dispatcher=dispatcher,
         repository_scope=scope,
     )
-    running = service.trigger_github_sync(system_component_name="payment-api")
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
     worker_repo.by_id[running["id"]] = dict(running)
 
-    result = service.execute_github_sync(running["id"], system_component_name="payment-api")
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
 
     assert scope.open_calls == 1
     assert result["status"] == "success"

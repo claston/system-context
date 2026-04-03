@@ -32,22 +32,6 @@ class SyncJobDispatcher:
     ):
         raise NotImplementedError
 
-    def dispatch_github_sync(
-        self,
-        task: Callable[[UUID, str | None], object],
-        sync_run_id: UUID,
-        system_component_name: str | None = None,
-    ):
-        self.dispatch_sync(
-            task=lambda run_id, _connector_name, req: task(
-                run_id, req.system_component_name
-            ),
-            sync_run_id=sync_run_id,
-            connector_name="github",
-            request=ConnectorRunRequest(system_component_name=system_component_name),
-        )
-
-
 class ThreadPoolSyncJobDispatcher(SyncJobDispatcher):
     def __init__(self, executor: Executor) -> None:
         self.executor = executor
@@ -75,12 +59,6 @@ class SyncService:
         self.job_dispatcher = job_dispatcher
         self.repository_scope = repository_scope
 
-    def trigger_github_sync(self, system_component_name: str | None = None):
-        return self.trigger_sync(
-            connector_name="github",
-            request=ConnectorRunRequest(system_component_name=system_component_name),
-        )
-
     def trigger_sync(self, connector_name: str, request: ConnectorRunRequest):
         if connector_name not in self.connectors:
             raise UnknownConnectorError(f"unknown connector: {connector_name}")
@@ -98,13 +76,6 @@ class SyncService:
             request,
         )
         return sync_run
-
-    def execute_github_sync(self, sync_run_id: UUID, system_component_name: str | None = None):
-        return self.execute_sync(
-            sync_run_id=sync_run_id,
-            connector_name="github",
-            request=ConnectorRunRequest(system_component_name=system_component_name),
-        )
 
     @contextmanager
     def _repository_context(self):

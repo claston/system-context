@@ -61,7 +61,7 @@ Current modules:
   - `POST/GET /dependencies`
   - `POST/GET /sync-runs`
 - Sync orchestration endpoints:
-  - `POST /sync-runs/github`
+  - `POST /sync-runs/{connector_name}`
   - `GET /sync-runs/{sync_run_id}`
 - Context aggregation endpoints:
   - `POST /agent/context`
@@ -245,7 +245,7 @@ Response:
 1. [Done] Remove hardcoded sync orchestration internals by introducing generic dispatch (`dispatch_sync`) and generic service execution (`trigger_sync`/`execute_sync`).
 2. [Done] Prevent background thread from reusing request-scoped repository/session by running worker updates inside a dedicated repository scope.
 3. [Done] Persist raw connector payloads for auditability/future normalization via `connector_raw_event`.
-4. [Done] Keep API compatibility for current clients by preserving `POST /sync-runs/github` and mapping it to the generic pipeline.
+4. [Done] Remove legacy sync wrappers and expose a single generic trigger endpoint (`POST /sync-runs/{connector_name}`).
 5. [Done] Validate with tests and real HTTP calls:
    - Unit/integration test suite passed (`35 passed`)
    - Lint passed (`ruff check`)
