@@ -1,4 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from typing import Iterator
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -74,13 +76,33 @@ def get_sync_job_dispatcher() -> SyncJobDispatcher:
     return ThreadPoolSyncJobDispatcher(executor=_sync_executor)
 
 
+def get_connector_registry(
+    github_connector: GithubConnector = Depends(get_github_connector),
+):
+    return {"github": github_connector}
+
+
+def get_context_repository_scope():
+    @contextmanager
+    def scope() -> Iterator[SqlAlchemyContextDataRepository]:
+        db = SessionLocal()
+        try:
+            yield SqlAlchemyContextDataRepository(db)
+        finally:
+            db.close()
+
+    return scope
+
+
 def get_sync_service(
     context_repository=Depends(get_context_data_repository),
-    github_connector: GithubConnector = Depends(get_github_connector),
+    connectors=Depends(get_connector_registry),
     job_dispatcher: SyncJobDispatcher = Depends(get_sync_job_dispatcher),
+    repository_scope=Depends(get_context_repository_scope),
 ) -> SyncService:
     return SyncService(
         context_repository=context_repository,
-        github_connector=github_connector,
+        connectors=connectors,
         job_dispatcher=job_dispatcher,
+        repository_scope=repository_scope,
     )

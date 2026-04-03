@@ -8,6 +8,7 @@ from app.models import (
     ApiContract,
     CodeRepo,
     Commit,
+    ConnectorRawEvent,
     Dependency,
     Deployment,
     Endpoint,
@@ -97,6 +98,10 @@ class ContextDataRepository(Protocol):
     def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None: ...
 
     def update_sync_run(self, sync_run_id: UUID, **kwargs) -> SyncRun: ...
+
+    def create_connector_raw_events(
+        self, sync_run_id: UUID, connector_name: str, items: list[dict]
+    ) -> List[ConnectorRawEvent]: ...
 
 
 class SqlAlchemySystemComponentRepository:
@@ -282,6 +287,23 @@ class SqlAlchemyContextDataRepository:
         self.db.commit()
         self.db.refresh(item)
         return item
+
+    def create_connector_raw_events(
+        self, sync_run_id: UUID, connector_name: str, items: list[dict]
+    ) -> List[ConnectorRawEvent]:
+        events = [
+            ConnectorRawEvent(
+                sync_run_id=sync_run_id,
+                connector_name=connector_name,
+                payload=item,
+            )
+            for item in items
+        ]
+        self.db.add_all(events)
+        self.db.commit()
+        for event in events:
+            self.db.refresh(event)
+        return events
 
     def get_system_component_by_name(self, system_component_name: str) -> SystemComponent | None:
         return (

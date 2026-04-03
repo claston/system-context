@@ -6,6 +6,7 @@ from app.application.sync_service import (
     SyncRunNotFoundError,
     SyncService,
     ThreadPoolSyncJobDispatcher,
+    UnknownConnectorError,
 )
 from app.application.system_component_service import (
     SystemComponentNotFoundError,
@@ -21,6 +22,7 @@ __all__ = [
     "SyncRunNotFoundError",
     "SyncService",
     "ThreadPoolSyncJobDispatcher",
+    "UnknownConnectorError",
     "SystemComponentNotFoundError",
     "SystemComponentService",
 ]
