@@ -1,3 +1,4 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Iterator
@@ -69,7 +70,14 @@ def get_context_service(
 
 
 def get_github_connector() -> GithubConnector:
-    return GithubConnector()
+    repos_raw = os.getenv("GITHUB_REPOS", "")
+    repos = [item.strip() for item in repos_raw.split(",") if item.strip()]
+    return GithubConnector(
+        token=os.getenv("GITHUB_TOKEN"),
+        owner=os.getenv("GITHUB_OWNER"),
+        repos=repos,
+        per_page=int(os.getenv("GITHUB_PER_PAGE", "20")),
+    )
 
 
 def get_sync_job_dispatcher() -> SyncJobDispatcher:

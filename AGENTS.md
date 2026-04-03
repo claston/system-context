@@ -29,6 +29,10 @@ This document defines the default execution rules for this repository.
 1. Always run the full test suite before finalizing work.
 2. Always run lint checks when configured in the project.
 3. For API changes, always run the application and validate endpoints with real HTTP calls.
+4. Always validate DB migration state before finalizing work:
+   - run `venv\Scripts\python.exe scripts/validate_environment.py`
+   - confirm Alembic current revision equals head
+   - confirm required schema tables exist
 
 Minimum API validation:
 - one create request
