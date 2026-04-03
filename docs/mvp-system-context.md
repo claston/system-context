@@ -240,6 +240,50 @@ Response:
 7. [Next] Introduce minimal normalization pipeline
 8. [Next] Add MCP exposure as a thin layer on top of application services
 
+## 11. Structured Backlog (MVP)
+
+### Now
+
+- `[BL-001]` Complete connector set for MVP:
+  - status: in progress
+  - scope: keep GitHub connector, add runtime connector, add OpenAPI connector
+  - outcome: first multi-source context ingestion path
+- `[BL-002]` Start minimal normalization pipeline:
+  - status: pending
+  - scope: normalize raw connector payloads into canonical context entities
+  - outcome: stable model for agent consumption
+
+### Next
+
+- `[BL-003]` Add MCP exposure on top of application services:
+  - status: pending
+  - scope: thin MCP layer for current-state and recent-change queries
+  - outcome: direct agent toolability
+- `[BL-004]` Add operational insights to context model:
+  - status: pending
+  - scope: represent CI/runtime warnings (e.g., deprecations), impact, action, status, and evidence
+  - outcome: proactive maintenance signals available to agents
+
+### Later
+
+- `[BL-005]` Add sync freshness/scoring signals:
+  - status: pending
+  - scope: confidence/freshness metadata per normalized context artifact
+  - outcome: better decision quality for agents
+
+## 12. Completed Activities (Snapshot)
+
+- `[DONE]` Task 1: harden `SystemComponent` validations and error semantics.
+- `[DONE]` Task 2: harden `CodeRepo` validations.
+- `[DONE]` Task 3: expand edge-case test coverage.
+- `[DONE]` Task 4: harden context-entity validations and error semantics.
+- `[DONE]` Task 5: introduce connector abstraction interface.
+- `[DONE/ONGOING]` Task 6: implement GitHub connector path, async sync hardening, raw event persistence, and generic trigger flow; runtime/OpenAPI connectors still pending.
+- `[DONE]` Automate environment validation:
+  - local command `scripts/validate_environment.py`
+  - CI migration/schema check job
+  - PR checklist and AGENTS guidance update
+
 ### 7.1 Task 6 Hardening Plan (Implemented in this cycle)
 
 1. [Done] Remove hardcoded sync orchestration internals by introducing generic dispatch (`dispatch_sync`) and generic service execution (`trigger_sync`/`execute_sync`).
