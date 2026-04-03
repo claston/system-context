@@ -3,7 +3,13 @@ from datetime import datetime, timezone
 from typing import Iterator
 from uuid import UUID, uuid4
 
-from app.application.sync_service import SyncExecutionError, SyncRunNotFoundError, SyncService
+from app.application.sync_runtime import SyncRuntimeState
+from app.application.sync_service import (
+    SyncExecutionError,
+    SyncRunNotFoundError,
+    SyncService,
+    SyncShuttingDownError,
+)
 from app.connectors.base import ConnectorBatch, ConnectorRunRequest
 
 
@@ -47,6 +53,9 @@ class FakeContextRepository:
                 }
             )
         return self.raw_events
+
+    def list_sync_runs_by_status(self, status: str):
+        return [item for item in self.by_id.values() if item.get("status") == status]
 
 
 class FakeSyncJobDispatcher:
@@ -220,3 +229,91 @@ def test_execute_sync_uses_repository_scope_for_background_updates() -> None:
     assert len(worker_repo.raw_events) == 2
     assert len(request_repo.updated) == 0
     assert len(request_repo.raw_events) == 0
+
+
+def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    runtime_state = SyncRuntimeState()
+    runtime_state.begin_shutdown()
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": FakeGithubConnector()},
+        job_dispatcher=dispatcher,
+        runtime_state=runtime_state,
+    )
+
+    try:
+        service.trigger_sync(
+            connector_name="github",
+            request=ConnectorRunRequest(system_component_name="payment-api"),
+        )
+    except SyncShuttingDownError:
+        pass
+    else:
+        raise AssertionError("expected SyncShuttingDownError")
+
+    assert len(repo.created) == 0
+    assert len(dispatcher.jobs) == 0
+
+
+def test_execute_sync_marks_failed_when_shutdown_started_before_job() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    runtime_state = SyncRuntimeState()
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": FakeGithubConnector()},
+        job_dispatcher=dispatcher,
+        runtime_state=runtime_state,
+    )
+    running = repo.create_sync_run(
+        connector_name="github",
+        status="running",
+        records_processed=0,
+        started_at=datetime.now(timezone.utc),
+    )
+    runtime_state.begin_shutdown()
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "failed"
+    assert result["finished_at"] is not None
+    assert "interrupted by shutdown" in (result["error_summary"] or "")
+    assert len(repo.raw_events) == 0
+
+
+def test_mark_running_sync_runs_failed_updates_orphaned_runs() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": FakeGithubConnector()},
+        job_dispatcher=dispatcher,
+    )
+    running = repo.create_sync_run(
+        connector_name="github",
+        status="running",
+        records_processed=0,
+        started_at=datetime.now(timezone.utc),
+    )
+    repo.create_sync_run(
+        connector_name="github",
+        status="success",
+        records_processed=2,
+        started_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
+    )
+
+    updated_count = service.mark_running_sync_runs_failed(
+        error_summary="recovered on startup after unclean stop"
+    )
+
+    assert updated_count == 1
+    assert repo.by_id[running["id"]]["status"] == "failed"
+    assert repo.by_id[running["id"]]["finished_at"] is not None
+    assert "recovered on startup" in (repo.by_id[running["id"]]["error_summary"] or "")

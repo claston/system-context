@@ -2,7 +2,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.application import SyncRunNotFoundError, SyncService, UnknownConnectorError
+from app.application import (
+    SyncRunNotFoundError,
+    SyncService,
+    SyncShuttingDownError,
+    UnknownConnectorError,
+)
 from app.connectors.base import ConnectorRunRequest
 from app.dependencies import get_sync_service
 from app.schemas import SyncRunResponse, SyncRunTriggerRequest
@@ -23,6 +28,8 @@ def run_sync(
         )
     except UnknownConnectorError:
         raise HTTPException(status_code=404, detail="Connector not found")
+    except SyncShuttingDownError:
+        raise HTTPException(status_code=503, detail="Sync service is shutting down")
 
 
 @router.get("/sync-runs/{sync_run_id}", response_model=SyncRunResponse)

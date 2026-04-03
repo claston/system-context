@@ -84,12 +84,15 @@ Track bugs found during real or near-real validation, with root cause and concre
 - Add local run hygiene:
   - Before starting app, check if another process is bound to service port.
   - Use a single command path for start/stop during manual tests.
+- Runtime guardrail in application lifecycle:
+  - On shutdown, stop accepting new sync runs and finalize leftover `running` syncs as failed.
+  - On startup, recover orphaned `running` syncs from previous unclean stop.
 - Documentation:
   - Keep this in AGENTS/docs runbook for future contributors.
 
 ### Status
 
-- Known operational risk; mitigation documented.
+- Mitigated in code with graceful shutdown + startup recovery flow.
 
 ## Consolidated Action Items (MVP)
 

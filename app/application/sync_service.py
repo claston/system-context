@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Callable, ContextManager
 from uuid import UUID
 
+from app.application.sync_runtime import SyncRuntimeState
 from app.connectors.base import ConnectorRunRequest
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ class UnknownConnectorError(Exception):
     pass
 
 
+class SyncShuttingDownError(Exception):
+    pass
+
+
 class SyncJobDispatcher:
     def dispatch_sync(
         self,
@@ -31,6 +36,7 @@ class SyncJobDispatcher:
         request: ConnectorRunRequest,
     ):
         raise NotImplementedError
+
 
 class ThreadPoolSyncJobDispatcher(SyncJobDispatcher):
     def __init__(self, executor: Executor) -> None:
@@ -53,13 +59,17 @@ class SyncService:
         connectors,
         job_dispatcher: SyncJobDispatcher,
         repository_scope: Callable[[], ContextManager] | None = None,
+        runtime_state: SyncRuntimeState | None = None,
     ) -> None:
         self.context_repository = context_repository
         self.connectors = connectors
         self.job_dispatcher = job_dispatcher
         self.repository_scope = repository_scope
+        self.runtime_state = runtime_state
 
     def trigger_sync(self, connector_name: str, request: ConnectorRunRequest):
+        if self.runtime_state and self.runtime_state.is_shutting_down():
+            raise SyncShuttingDownError("sync service is shutting down")
         if connector_name not in self.connectors:
             raise UnknownConnectorError(f"unknown connector: {connector_name}")
         sync_run = self.context_repository.create_sync_run(
@@ -88,16 +98,17 @@ class SyncService:
     def execute_sync(
         self, sync_run_id: UUID, connector_name: str, request: ConnectorRunRequest
     ):
+        if self.runtime_state and not self.runtime_state.try_acquire_job_slot():
+            return self._mark_sync_run_failed(
+                sync_run_id=sync_run_id,
+                error_summary="interrupted by shutdown",
+            )
         connector = self.connectors.get(connector_name)
         if connector is None:
-            with self._repository_context() as repo:
-                return repo.update_sync_run(
-                    sync_run_id,
-                    status="failed",
-                    records_processed=0,
-                    error_summary=f"unknown connector: {connector_name}",
-                    finished_at=datetime.now(timezone.utc),
-                )
+            return self._mark_sync_run_failed(
+                sync_run_id=sync_run_id,
+                error_summary=f"unknown connector: {connector_name}",
+            )
 
         logger.info(
             "Starting sync run execution",
@@ -125,14 +136,39 @@ class SyncService:
                 "Sync run execution failed",
                 extra={"sync_run_id": str(sync_run_id), "connector_name": connector_name},
             )
-            with self._repository_context() as repo:
-                return repo.update_sync_run(
+            return self._mark_sync_run_failed(
+                sync_run_id=sync_run_id,
+                error_summary=f"{type(exc).__name__}: {exc}",
+            )
+        finally:
+            if self.runtime_state:
+                self.runtime_state.release_job_slot()
+
+    def _mark_sync_run_failed(self, sync_run_id: UUID, error_summary: str):
+        with self._repository_context() as repo:
+            return repo.update_sync_run(
+                sync_run_id,
+                status="failed",
+                records_processed=0,
+                error_summary=error_summary,
+                finished_at=datetime.now(timezone.utc),
+            )
+
+    def mark_running_sync_runs_failed(self, error_summary: str) -> int:
+        with self._repository_context() as repo:
+            running_sync_runs = repo.list_sync_runs_by_status("running")
+            for sync_run in running_sync_runs:
+                sync_run_id = (
+                    sync_run["id"] if isinstance(sync_run, dict) else sync_run.id
+                )
+                repo.update_sync_run(
                     sync_run_id,
                     status="failed",
                     records_processed=0,
-                    error_summary=f"{type(exc).__name__}: {exc}",
+                    error_summary=error_summary,
                     finished_at=datetime.now(timezone.utc),
                 )
+            return len(running_sync_runs)
 
     def get_sync_run(self, sync_run_id: UUID):
         item = self.context_repository.get_sync_run_by_id(sync_run_id)
