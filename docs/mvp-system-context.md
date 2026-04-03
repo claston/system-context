@@ -74,7 +74,7 @@ Current modules:
 - DB session dependency in FastAPI
 - Persistence + Application layers with dependency injection
 - Connector abstraction contracts (`ConnectorRunRequest`, `ConnectorBatch`, `Connector` protocol)
-- First connector implementation (GitHub connector, initial stub)
+- First connector implementation (GitHub connector using real GitHub API requests)
 - Async sync job dispatching via thread pool and sync run status lifecycle (`running/success/failed`)
 - Generic sync execution pipeline (`trigger_sync`/`execute_sync`) with connector registry
 - Background sync execution using isolated repository scope per job (separate DB session from request thread)
@@ -235,7 +235,7 @@ Response:
 4. [Done] Harden context-entity validation rules and error semantics
 5. [Done] Introduce connector abstraction interface
 6. [In progress] Introduce first connector implementations (Git/runtime/OpenAPI)
-   - Current status: GitHub connector + generic sync pipeline + raw ingestion persistence implemented
+   - Current status: GitHub connector (real API integration) + generic sync pipeline + raw ingestion persistence implemented
    - Remaining scope: runtime/OpenAPI connectors
 7. [Next] Introduce minimal normalization pipeline
 8. [Next] Add MCP exposure as a thin layer on top of application services
@@ -247,9 +247,38 @@ Response:
 3. [Done] Persist raw connector payloads for auditability/future normalization via `connector_raw_event`.
 4. [Done] Remove legacy sync wrappers and expose a single generic trigger endpoint (`POST /sync-runs/{connector_name}`).
 5. [Done] Validate with tests and real HTTP calls:
-   - Unit/integration test suite passed (`35 passed`)
+   - Unit/integration test suite passed (current branch validation)
    - Lint passed (`ruff check`)
    - HTTP validation passed for sync endpoints (`create`, `list`, `get-by-id`, negative path `404`)
+
+### 7.2 GitHub Connector Runtime Configuration
+
+Environment variables used by `GithubConnector`:
+
+- `GITHUB_TOKEN` (optional): GitHub token for authenticated requests (recommended to avoid low rate limits).
+- `GITHUB_OWNER` (optional): default owner/org used when `system_component_name` is provided without owner prefix.
+- `GITHUB_REPOS` (optional): comma-separated repository targets in `owner/repo` format.
+- `GITHUB_PER_PAGE` (optional): number of items requested per endpoint call (default: `20`).
+
+Target resolution order:
+
+1. `system_component_name` with `owner/repo` format.
+2. `GITHUB_OWNER + system_component_name`.
+3. Match `system_component_name` against configured `GITHUB_REPOS`.
+4. Fallback to all configured `GITHUB_REPOS`.
+
+### 7.3 Environment Validation Automation
+
+To make migration state automatic and verifiable:
+
+- Local command:
+  - `venv\Scripts\python.exe scripts/validate_environment.py`
+- What it checks:
+  - runs `alembic upgrade head`
+  - confirms current DB revision equals Alembic head
+  - confirms required core tables exist (including `connector_raw_event`)
+- CI enforcement:
+  - workflow includes dedicated Postgres job to run the same validation script
 
 ## 8. Practical Direction To Keep Focus
 

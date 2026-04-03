@@ -41,6 +41,7 @@ If manual step is required, describe it:
 - [ ] Tests added/updated when relevant
 - [ ] Docs updated when relevant
 - [ ] Backward-compatibility considered
+- [ ] Migration validated (`alembic upgrade head` and current revision at head)
 
 ## Screenshots / logs (optional)
 
