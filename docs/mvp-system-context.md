@@ -324,6 +324,26 @@ To make migration state automatic and verifiable:
 - CI enforcement:
   - workflow includes dedicated Postgres job to run the same validation script
 
+### 7.4 Phase 1 Security Guardrails (No Cost)
+
+Implemented controls:
+
+- `main` branch protection:
+  - pull request required
+  - 1 approving review required
+  - required checks: `lint-and-test`, `migration-and-schema-check`
+  - conversation resolution required
+- Dependabot security:
+  - vulnerability alerts enabled
+  - automated security updates enabled
+- Secret scanning:
+  - secret scanning enabled
+  - push protection enabled
+- CI/workflow hardening:
+  - least-privilege workflow permission baseline (`contents: read`) in CI
+  - CodeQL workflow added for Python (`pull_request`, `main`, and weekly schedule)
+  - Dependabot version update automation for `pip` and `github-actions`
+
 ## 8. Practical Direction To Keep Focus
 
 1. Standardize a canonical context model (entities and relationships)
