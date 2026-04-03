@@ -301,7 +301,7 @@ class SyncRunResponse(BaseModel):
     updated_at: datetime
 
 
-class GithubSyncRunRequest(BaseModel):
+class SyncRunTriggerRequest(BaseModel):
     system_component_name: str | None = Field(default=None, max_length=255)
 
     @field_validator("system_component_name")
