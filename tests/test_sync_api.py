@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.application import SyncRunNotFoundError, UnknownConnectorError
+from app.application import SyncRunNotFoundError, SyncShuttingDownError, UnknownConnectorError
 from app.db import Base
 from app.dependencies import get_sync_service
 from app.main import app, get_db
@@ -118,4 +118,23 @@ def test_post_sync_runs_returns_404_when_connector_missing() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Connector not found"
+    app.dependency_overrides.clear()
+
+
+def test_post_sync_runs_returns_503_when_service_is_shutting_down() -> None:
+    client = build_test_client()
+
+    class ShuttingDownSyncService(FakeSyncService):
+        def trigger_sync(self, connector_name: str, request):
+            raise SyncShuttingDownError("shutdown in progress")
+
+    app.dependency_overrides[get_sync_service] = lambda: ShuttingDownSyncService()
+
+    response = client.post(
+        "/sync-runs/github",
+        json={"system_component_name": "payment-api"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Sync service is shutting down"
     app.dependency_overrides.clear()

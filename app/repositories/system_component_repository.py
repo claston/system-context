@@ -95,6 +95,8 @@ class ContextDataRepository(Protocol):
 
     def list_sync_runs(self) -> List[SyncRun]: ...
 
+    def list_sync_runs_by_status(self, status: str) -> List[SyncRun]: ...
+
     def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None: ...
 
     def update_sync_run(self, sync_run_id: UUID, **kwargs) -> SyncRun: ...
@@ -273,6 +275,9 @@ class SqlAlchemyContextDataRepository:
 
     def list_sync_runs(self) -> List[SyncRun]:
         return self.db.query(SyncRun).all()
+
+    def list_sync_runs_by_status(self, status: str) -> List[SyncRun]:
+        return self.db.query(SyncRun).filter(SyncRun.status == status).all()
 
     def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None:
         return self.db.query(SyncRun).filter(SyncRun.id == sync_run_id).first()

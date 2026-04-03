@@ -328,7 +328,25 @@ To make migration state automatic and verifiable:
 - CI enforcement:
   - workflow includes dedicated Postgres job to run the same validation script
 
-### 7.4 Phase 1 Security Guardrails (No Cost)
+### 7.4 Sync Lifecycle Guardrails
+
+To reduce inconsistent sync state during app restarts/stops:
+
+- Startup recovery:
+  - application marks orphaned `sync_run` rows in `running` as `failed`
+  - error summary: `recovered on startup after unclean stop`
+- Graceful shutdown:
+  - application stops accepting new sync triggers
+  - waits for active sync workers until configured timeout
+  - marks remaining `running` syncs as `failed`
+  - error summary: `interrupted by shutdown`
+
+Runtime configuration:
+
+- `SYNC_RECOVERY_ENABLED` (default: `true`)
+- `SYNC_SHUTDOWN_TIMEOUT_SECONDS` (default: `15`)
+
+### 7.5 Phase 1 Security Guardrails (No Cost)
 
 Implemented controls:
 

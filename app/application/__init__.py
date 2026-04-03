@@ -5,6 +5,7 @@ from app.application.sync_service import (
     SyncJobDispatcher,
     SyncRunNotFoundError,
     SyncService,
+    SyncShuttingDownError,
     ThreadPoolSyncJobDispatcher,
     UnknownConnectorError,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "SyncExecutionError",
     "SyncJobDispatcher",
     "SyncRunNotFoundError",
+    "SyncShuttingDownError",
     "SyncService",
     "ThreadPoolSyncJobDispatcher",
     "UnknownConnectorError",
