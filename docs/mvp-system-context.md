@@ -263,6 +263,10 @@ Response:
   - status: pending
   - scope: represent CI/runtime warnings (e.g., deprecations), impact, action, status, and evidence
   - outcome: proactive maintenance signals available to agents
+- `[BL-006]` Enrich GitHub sync payload with PR/commit context:
+  - status: pending
+  - scope: persist changed files, labels, review/merge metadata, and commit-to-PR linkage when available
+  - outcome: higher-quality context for agents to reason about impact and where to change code
 
 ### Later
 
