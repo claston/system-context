@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -88,9 +89,13 @@ class FakeRepositoryScope:
         self.repo = repo
         self.open_calls = 0
 
-    def __call__(self) -> Iterator[FakeContextRepository]:
-        self.open_calls += 1
-        yield self.repo
+    def __call__(self):
+        @contextmanager
+        def scope() -> Iterator[FakeContextRepository]:
+            self.open_calls += 1
+            yield self.repo
+
+        return scope()
 
 
 def test_sync_service_triggers_running_and_dispatches_job() -> None:

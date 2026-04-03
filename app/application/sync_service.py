@@ -2,7 +2,7 @@ import logging
 from concurrent.futures import Executor
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Callable, Iterator
+from typing import Callable, ContextManager
 from uuid import UUID
 
 from app.connectors.base import ConnectorRunRequest
@@ -52,7 +52,7 @@ class SyncService:
         context_repository,
         connectors,
         job_dispatcher: SyncJobDispatcher,
-        repository_scope: Callable[[], Iterator] | None = None,
+        repository_scope: Callable[[], ContextManager] | None = None,
     ) -> None:
         self.context_repository = context_repository
         self.connectors = connectors
@@ -82,7 +82,8 @@ class SyncService:
         if self.repository_scope is None:
             yield self.context_repository
             return
-        yield from self.repository_scope()
+        with self.repository_scope() as repo:
+            yield repo
 
     def execute_sync(
         self, sync_run_id: UUID, connector_name: str, request: ConnectorRunRequest
