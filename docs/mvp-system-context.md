@@ -23,7 +23,7 @@ Current modules:
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-04-02)
+## 3. Implemented Scope (As of 2026-04-03)
 
 ### Implemented now
 
@@ -40,6 +40,7 @@ Current modules:
   - `endpoint`
   - `dependency`
   - `sync_run`
+  - `connector_raw_event`
 - SystemComponent API endpoints:
   - `GET /health`
   - `POST /system-components`
@@ -75,6 +76,9 @@ Current modules:
 - Connector abstraction contracts (`ConnectorRunRequest`, `ConnectorBatch`, `Connector` protocol)
 - First connector implementation (GitHub connector, initial stub)
 - Async sync job dispatching via thread pool and sync run status lifecycle (`running/success/failed`)
+- Generic sync execution pipeline (`trigger_sync`/`execute_sync`) with connector registry
+- Background sync execution using isolated repository scope per job (separate DB session from request thread)
+- Raw connector item persistence linked to sync runs (`connector_raw_event`)
 
 ### Not implemented yet
 
@@ -123,6 +127,7 @@ Tables:
 - `endpoint`
 - `dependency`
 - `sync_run`
+- `connector_raw_event`
 
 Note:
 - All context entities currently have `POST` + `GET` list endpoints and are used by context aggregation APIs.
@@ -230,10 +235,21 @@ Response:
 4. [Done] Harden context-entity validation rules and error semantics
 5. [Done] Introduce connector abstraction interface
 6. [In progress] Introduce first connector implementations (Git/runtime/OpenAPI)
-   - Current status: GitHub connector + sync trigger flow implemented
+   - Current status: GitHub connector + generic sync pipeline + raw ingestion persistence implemented
    - Remaining scope: runtime/OpenAPI connectors
 7. [Next] Introduce minimal normalization pipeline
 8. [Next] Add MCP exposure as a thin layer on top of application services
+
+### 7.1 Task 6 Hardening Plan (Implemented in this cycle)
+
+1. [Done] Remove hardcoded sync orchestration internals by introducing generic dispatch (`dispatch_sync`) and generic service execution (`trigger_sync`/`execute_sync`).
+2. [Done] Prevent background thread from reusing request-scoped repository/session by running worker updates inside a dedicated repository scope.
+3. [Done] Persist raw connector payloads for auditability/future normalization via `connector_raw_event`.
+4. [Done] Keep API compatibility for current clients by preserving `POST /sync-runs/github` and mapping it to the generic pipeline.
+5. [Done] Validate with tests and real HTTP calls:
+   - Unit/integration test suite passed (`35 passed`)
+   - Lint passed (`ruff check`)
+   - HTTP validation passed for sync endpoints (`create`, `list`, `get-by-id`, negative path `404`)
 
 ## 8. Practical Direction To Keep Focus
 
