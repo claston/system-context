@@ -2,9 +2,10 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from typing import List, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -344,44 +345,53 @@ class SqlAlchemyContextDataRepository:
             seen_batch.add(key)
             unique_items.append((target_key, source_key, item))
 
-        predicates = [
-            and_(
-                ConnectorRawEvent.target_key == target_key,
-                ConnectorRawEvent.source_key == source_key,
+        now = datetime.now(timezone.utc)
+        rows_to_insert = []
+        candidate_ids: list[UUID] = []
+        for target_key, source_key, item in unique_items:
+            event_id = uuid4()
+            candidate_ids.append(event_id)
+            rows_to_insert.append(
+                {
+                    "id": event_id,
+                    "sync_run_id": sync_run_id,
+                    "connector_name": connector_name,
+                    "target_key": target_key,
+                    "source_key": source_key,
+                    "payload": item,
+                    "collected_at": now,
+                    "created_at": now,
+                    "updated_at": now,
+                }
             )
-            for target_key, source_key, _ in unique_items
-        ]
-        existing_keys: set[tuple[str, str]] = set()
-        if predicates:
-            existing_rows = (
-                self.db.query(ConnectorRawEvent.target_key, ConnectorRawEvent.source_key)
-                .filter(
-                    ConnectorRawEvent.connector_name == connector_name,
-                    or_(*predicates),
-                )
-                .all()
-            )
-            existing_keys = set(existing_rows)
 
-        events = [
-            ConnectorRawEvent(
-                sync_run_id=sync_run_id,
-                connector_name=connector_name,
-                target_key=target_key,
-                source_key=source_key,
-                payload=item,
+        dialect_name = self.db.bind.dialect.name if self.db.bind is not None else None
+        if dialect_name == "postgresql":
+            statement = postgresql_insert(ConnectorRawEvent).values(rows_to_insert)
+            statement = statement.on_conflict_do_nothing(
+                constraint="connector_raw_event_identity_key"
             )
-            for target_key, source_key, item in unique_items
-            if (target_key, source_key) not in existing_keys
-        ]
-        if not events:
+        elif dialect_name == "sqlite":
+            statement = sqlite_insert(ConnectorRawEvent).values(rows_to_insert)
+            statement = statement.on_conflict_do_nothing(
+                index_elements=["connector_name", "target_key", "source_key"]
+            )
+        else:
+            raise RuntimeError(f"unsupported database dialect for atomic raw-event insert: {dialect_name}")
+
+        self.db.execute(statement)
+        self.db.commit()
+
+        inserted_events = (
+            self.db.query(ConnectorRawEvent)
+            .filter(ConnectorRawEvent.id.in_(candidate_ids))
+            .all()
+        )
+        if not inserted_events:
             return []
 
-        self.db.add_all(events)
-        self.db.commit()
-        for event in events:
-            self.db.refresh(event)
-        return events
+        event_by_id = {event.id: event for event in inserted_events}
+        return [event_by_id[event_id] for event_id in candidate_ids if event_id in event_by_id]
 
     def get_connector_sync_cursors(self, connector_name: str) -> dict[str, str]:
         states = (

@@ -240,3 +240,145 @@ def test_collect_with_lookback_includes_out_of_order_commit() -> None:
     assert "commit:f7079671bd93e410ff7270f9ac15b6cdd508f8a9" in {
         item["source_key"] for item in batch.items
     }
+
+
+def test_collect_paginates_pull_requests_and_commits() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+
+        if request.url.path == "/repos/acme/payment-api/pulls":
+            if page == 1:
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 101,
+                            "number": 12,
+                            "title": "feat: p1",
+                            "state": "open",
+                            "html_url": "https://github.com/acme/payment-api/pull/12",
+                            "updated_at": "2026-04-03T12:00:00Z",
+                            "user": {"login": "alice"},
+                        }
+                    ],
+                )
+            if page == 2:
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 102,
+                            "number": 13,
+                            "title": "feat: p2",
+                            "state": "open",
+                            "html_url": "https://github.com/acme/payment-api/pull/13",
+                            "updated_at": "2026-04-03T11:59:00Z",
+                            "user": {"login": "alice"},
+                        }
+                    ],
+                )
+            return httpx.Response(200, json=[])
+
+        if request.url.path == "/repos/acme/payment-api/commits":
+            if page == 1:
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "sha": "a1",
+                            "html_url": "https://github.com/acme/payment-api/commit/a1",
+                            "commit": {
+                                "message": "fix: a1",
+                                "author": {"name": "bob", "date": "2026-04-03T12:01:00Z"},
+                            },
+                            "author": {"login": "bob"},
+                        }
+                    ],
+                )
+            if page == 2:
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "sha": "b1",
+                            "html_url": "https://github.com/acme/payment-api/commit/b1",
+                            "commit": {
+                                "message": "fix: b1",
+                                "author": {"name": "bob", "date": "2026-04-03T11:58:00Z"},
+                            },
+                            "author": {"login": "bob"},
+                        }
+                    ],
+                )
+            return httpx.Response(200, json=[])
+
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = build_mock_client(handler)
+    connector = GithubConnector(
+        client=client,
+        repos=["acme/payment-api"],
+        per_page=1,
+        max_pages=5,
+    )
+
+    batch = connector.collect(ConnectorRunRequest())
+
+    assert batch.records_processed == 4
+    assert [item["source_key"] for item in batch.items] == [
+        "pull_request:12",
+        "pull_request:13",
+        "commit:a1",
+        "commit:b1",
+    ]
+
+
+def test_collect_reports_error_when_pagination_limit_is_hit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        if request.url.path == "/repos/acme/payment-api/pulls":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 100 + page,
+                        "number": 10 + page,
+                        "title": f"feat: p{page}",
+                        "state": "open",
+                        "html_url": f"https://github.com/acme/payment-api/pull/{10 + page}",
+                        "updated_at": "2026-04-03T12:00:00Z",
+                        "user": {"login": "alice"},
+                    }
+                ],
+            )
+        if request.url.path == "/repos/acme/payment-api/commits":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": f"c{page}",
+                        "html_url": f"https://github.com/acme/payment-api/commit/c{page}",
+                        "commit": {
+                            "message": f"fix: c{page}",
+                            "author": {"name": "bob", "date": "2026-04-03T12:00:00Z"},
+                        },
+                        "author": {"login": "bob"},
+                    }
+                ],
+            )
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = build_mock_client(handler)
+    connector = GithubConnector(
+        client=client,
+        repos=["acme/payment-api"],
+        per_page=1,
+        max_pages=1,
+    )
+
+    batch = connector.collect(ConnectorRunRequest())
+
+    assert batch.records_processed == 2
+    assert len(batch.errors) == 2
+    assert "pagination limit hit for pull requests on acme/payment-api" in batch.errors[0]
+    assert "pagination limit hit for commits on acme/payment-api" in batch.errors[1]

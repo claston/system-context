@@ -127,6 +127,7 @@ class SyncService:
             )
             with self._repository_context() as repo:
                 inserted_events_count = 0
+                processed_records_count = max(0, batch.records_processed)
                 if batch.items:
                     inserted_events = repo.create_connector_raw_events(
                         sync_run_id=sync_run_id,
@@ -148,12 +149,27 @@ class SyncService:
                         all_errors.append(
                             f"normalization failed: {type(exc).__name__}: {exc}"
                         )
-                status = "success" if not all_errors else "partial"
-                error_summary = "; ".join(all_errors) if all_errors else None
+                has_success_signal = (
+                    processed_records_count > 0 or inserted_events_count > 0
+                )
+                if all_errors:
+                    status = "partial" if has_success_signal else "failed"
+                else:
+                    status = "success"
+
+                counter_summary = (
+                    f"processed={processed_records_count}, inserted={inserted_events_count}"
+                )
+                if all_errors:
+                    error_summary = "; ".join([*all_errors, counter_summary])
+                elif processed_records_count != inserted_events_count:
+                    error_summary = counter_summary
+                else:
+                    error_summary = None
                 return repo.update_sync_run(
                     sync_run_id,
                     status=status,
-                    records_processed=inserted_events_count,
+                    records_processed=processed_records_count,
                     error_summary=error_summary,
                     finished_at=datetime.now(timezone.utc),
                 )
