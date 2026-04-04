@@ -115,19 +115,33 @@ class SyncService:
             extra={"sync_run_id": str(sync_run_id), "connector_name": connector_name},
         )
         try:
-            batch = connector.collect(request)
             with self._repository_context() as repo:
+                cursor_by_target = repo.get_connector_sync_cursors(connector_name)
+            batch = connector.collect(
+                ConnectorRunRequest(
+                    system_component_name=request.system_component_name,
+                    cursor_by_target=cursor_by_target,
+                )
+            )
+            with self._repository_context() as repo:
+                inserted_events_count = 0
                 if batch.items:
-                    repo.create_connector_raw_events(
+                    inserted_events = repo.create_connector_raw_events(
                         sync_run_id=sync_run_id,
                         connector_name=connector_name,
                         items=batch.items,
+                    )
+                    inserted_events_count = len(inserted_events)
+                if batch.latest_cursor_by_target:
+                    repo.upsert_connector_sync_cursors(
+                        connector_name=connector_name,
+                        cursor_by_target=batch.latest_cursor_by_target,
                     )
                 error_summary = "; ".join(batch.errors) if batch.errors else None
                 return repo.update_sync_run(
                     sync_run_id,
                     status="success",
-                    records_processed=batch.records_processed,
+                    records_processed=inserted_events_count,
                     error_summary=error_summary,
                     finished_at=datetime.now(timezone.utc),
                 )

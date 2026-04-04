@@ -19,6 +19,9 @@ class FakeContextRepository:
         self.by_id = {}
         self.raw_events = []
         self.updated = []
+        self.cursor_by_target = {}
+        self.requested_connector_names = []
+        self.upserted_cursors = []
 
     def create_sync_run(self, **kwargs):
         payload = {
@@ -57,6 +60,18 @@ class FakeContextRepository:
     def list_sync_runs_by_status(self, status: str):
         return [item for item in self.by_id.values() if item.get("status") == status]
 
+    def get_connector_sync_cursors(self, connector_name: str) -> dict[str, str]:
+        self.requested_connector_names.append(connector_name)
+        return dict(self.cursor_by_target)
+
+    def upsert_connector_sync_cursors(
+        self, connector_name: str, cursor_by_target: dict[str, str]
+    ) -> None:
+        self.upserted_cursors.append(
+            {"connector_name": connector_name, "cursor_by_target": dict(cursor_by_target)}
+        )
+        self.cursor_by_target.update(cursor_by_target)
+
 
 class FakeSyncJobDispatcher:
     def __init__(self) -> None:
@@ -82,14 +97,17 @@ class FakeSyncJobDispatcher:
 class FakeGithubConnector:
     def __init__(self, should_fail: bool = False):
         self.should_fail = should_fail
+        self.requests = []
 
     def collect(self, request: ConnectorRunRequest) -> ConnectorBatch:
         if self.should_fail:
             raise SyncExecutionError("connector failed")
+        self.requests.append(request)
         return ConnectorBatch(
             connector_name="github",
             records_processed=2,
             items=[{"kind": "pull_request"}, {"kind": "commit"}],
+            latest_cursor_by_target={"acme/payment-api": "2026-04-03T12:02:00+00:00"},
         )
 
 
@@ -135,9 +153,10 @@ def test_sync_service_triggers_running_and_dispatches_job() -> None:
 def test_sync_service_executes_and_marks_success() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
+    connector = FakeGithubConnector()
     service = SyncService(
         context_repository=repo,
-        connectors={"github": FakeGithubConnector()},
+        connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
     running = service.trigger_sync(
@@ -156,6 +175,10 @@ def test_sync_service_executes_and_marks_success() -> None:
     assert result["finished_at"] is not None
     assert len(repo.raw_events) == 2
     assert repo.raw_events[0]["sync_run_id"] == running["id"]
+    assert repo.requested_connector_names == ["github"]
+    assert len(repo.upserted_cursors) == 1
+    assert repo.upserted_cursors[0]["connector_name"] == "github"
+    assert connector.requests[0].cursor_by_target == {}
 
 
 def test_sync_service_executes_and_marks_failed() -> None:
@@ -223,12 +246,38 @@ def test_execute_sync_uses_repository_scope_for_background_updates() -> None:
         request=ConnectorRunRequest(system_component_name="payment-api"),
     )
 
-    assert scope.open_calls == 1
+    assert scope.open_calls == 2
     assert result["status"] == "success"
     assert len(worker_repo.updated) == 1
     assert len(worker_repo.raw_events) == 2
     assert len(request_repo.updated) == 0
     assert len(request_repo.raw_events) == 0
+
+
+def test_execute_sync_passes_existing_cursor_to_connector() -> None:
+    repo = FakeContextRepository()
+    repo.cursor_by_target = {"acme/payment-api": "2026-04-03T12:00:30Z"}
+    dispatcher = FakeSyncJobDispatcher()
+    connector = FakeGithubConnector()
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert connector.requests[0].cursor_by_target == {
+        "acme/payment-api": "2026-04-03T12:00:30Z"
+    }
 
 
 def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:
