@@ -43,6 +43,9 @@ jobs:
       - name: Run unit tests
         run: pytest -q
 
+      - name: Run MCP smoke checks
+        run: python scripts/mcp_smoke_check.py
+
   migration-and-schema-check:
     runs-on: ubuntu-latest
     env:

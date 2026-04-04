@@ -7,3 +7,4 @@ select = ["E", "F", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 "alembic/env.py" = ["E402", "F401"]
+"scripts/mcp_smoke_check.py" = ["E402"]
