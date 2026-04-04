@@ -4,6 +4,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base
+from app.dependencies import (
+    get_context_service,
+    get_mcp_api_token,
+    get_mcp_tool_timeout_seconds,
+)
 from app.main import app, get_db
 
 
@@ -131,4 +136,102 @@ def test_mcp_tools_call_returns_jsonrpc_error_for_missing_component() -> None:
     payload = response.json()
     assert payload["error"]["code"] == -32004
     assert payload["error"]["message"] == "System component not found"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_returns_401_when_auth_is_required_and_header_is_missing() -> None:
+    client = build_test_client()
+    app.dependency_overrides[get_mcp_api_token] = lambda: "top-secret"
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "auth-1",
+            "method": "initialize",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 401
+    payload = response.json()
+    assert payload["jsonrpc"] == "2.0"
+    assert payload["id"] == "auth-1"
+    assert payload["error"]["code"] == -32001
+    assert payload["error"]["message"] == "Unauthorized"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_accepts_call_when_auth_header_matches() -> None:
+    client = build_test_client()
+    app.dependency_overrides[get_mcp_api_token] = lambda: "top-secret"
+
+    response = client.post(
+        "/mcp",
+        headers={"X-MCP-API-Key": "top-secret"},
+        json={
+            "jsonrpc": "2.0",
+            "id": "auth-2",
+            "method": "tools/list",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "result" in payload
+    assert payload["result"]["tools"]
+    app.dependency_overrides.clear()
+
+
+def test_mcp_invalid_request_includes_request_id_in_error_data() -> None:
+    client = build_test_client()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "invalid-1",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32600
+    assert payload["error"]["message"] == "Invalid Request"
+    assert payload["error"]["data"]["request_id"] == "invalid-1"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_tool_timeout_returns_jsonrpc_error() -> None:
+    class SlowContextService:
+        def get_system_current_state(self):
+            import time
+
+            time.sleep(0.05)
+            return {"system_component_count": 0}
+
+    client = build_test_client()
+    app.dependency_overrides[get_mcp_tool_timeout_seconds] = lambda: 0.001
+    app.dependency_overrides[get_context_service] = lambda: SlowContextService()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "timeout-1",
+            "method": "tools/call",
+            "params": {
+                "name": "context.system.current_state",
+                "arguments": {},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32008
+    assert payload["error"]["message"] == "Tool execution timeout"
+    assert payload["error"]["data"]["request_id"] == "timeout-1"
     app.dependency_overrides.clear()

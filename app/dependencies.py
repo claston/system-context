@@ -87,6 +87,15 @@ def get_context_service(
     return ContextService(context_query_repository)
 
 
+def get_mcp_api_token() -> str | None:
+    token = os.getenv("MCP_API_TOKEN", "").strip()
+    return token or None
+
+
+def get_mcp_tool_timeout_seconds() -> float:
+    return float(os.getenv("MCP_TOOL_TIMEOUT_SECONDS", "5"))
+
+
 def get_github_normalization_service(
     normalization_repository=Depends(get_github_normalization_repository),
 ) -> GithubNormalizationService:
