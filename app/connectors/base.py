@@ -14,6 +14,7 @@ class ConnectorBatch:
     records_processed: int
     items: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     latest_cursor_by_target: dict[str, str] = field(default_factory=dict)
 
 

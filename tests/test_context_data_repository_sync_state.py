@@ -1,23 +1,26 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import Base
 from app.models import CodeRepo, Commit, ConnectorRawEvent, PullRequest, SystemComponent
-from app.repositories.system_component_repository import SqlAlchemyContextDataRepository
+from app.repositories.context_repositories import (
+    SqlAlchemyGithubNormalizationRepository,
+    SqlAlchemySyncRepository,
+)
 
 
-def build_repo() -> SqlAlchemyContextDataRepository:
+def build_db() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base.metadata.create_all(bind=engine)
-    db = testing_session_local()
-    return SqlAlchemyContextDataRepository(db)
+    return testing_session_local()
 
 
 def test_create_connector_raw_events_is_idempotent_by_source_key() -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemySyncRepository(db)
     try:
         run1 = repo.create_sync_run(
             connector_name="github",
@@ -51,15 +54,16 @@ def test_create_connector_raw_events_is_idempotent_by_source_key() -> None:
 
         assert len(first_insert) == 2
         assert len(second_insert) == 0
-        assert repo.db.query(ConnectorRawEvent).count() == 2
+        assert db.query(ConnectorRawEvent).count() == 2
     finally:
-        repo.db.close()
+        db.close()
 
 
 def test_create_connector_raw_events_is_resilient_to_stale_duplicate_reads(
     monkeypatch,
 ) -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemySyncRepository(db)
     try:
         run1 = repo.create_sync_run(
             connector_name="github",
@@ -84,7 +88,7 @@ def test_create_connector_raw_events_is_resilient_to_stale_duplicate_reads(
 
         repo.create_connector_raw_events(run1.id, "github", items)
 
-        original_query = repo.db.query
+        original_query = db.query
 
         def stale_query(*entities, **kwargs):
             if (
@@ -102,18 +106,19 @@ def test_create_connector_raw_events_is_resilient_to_stale_duplicate_reads(
                 return EmptyQuery()
             return original_query(*entities, **kwargs)
 
-        monkeypatch.setattr(repo.db, "query", stale_query)
+        monkeypatch.setattr(db, "query", stale_query)
 
         second_insert = repo.create_connector_raw_events(run2.id, "github", items)
 
         assert len(second_insert) == 0
-        assert repo.db.query(ConnectorRawEvent).count() == 1
+        assert db.query(ConnectorRawEvent).count() == 1
     finally:
-        repo.db.close()
+        db.close()
 
 
 def test_sync_cursor_state_round_trip() -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemySyncRepository(db)
     try:
         assert repo.get_connector_sync_cursors("github") == {}
 
@@ -139,11 +144,12 @@ def test_sync_cursor_state_round_trip() -> None:
             "2026-04-03T12:10:00+00:00"
         )
     finally:
-        repo.db.close()
+        db.close()
 
 
 def test_list_raw_events_by_sync_run_and_connector() -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemySyncRepository(db)
     try:
         run = repo.create_sync_run(
             connector_name="github",
@@ -170,16 +176,17 @@ def test_list_raw_events_by_sync_run_and_connector() -> None:
         assert events[0].connector_name == "github"
         assert events[0].source_key == "pull_request:12"
     finally:
-        repo.db.close()
+        db.close()
 
 
 def test_get_code_repo_by_provider_and_repository() -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemyGithubNormalizationRepository(db)
     try:
         system_component = SystemComponent(name="payment-api", description="payments")
-        repo.db.add(system_component)
-        repo.db.commit()
-        repo.db.refresh(system_component)
+        db.add(system_component)
+        db.commit()
+        db.refresh(system_component)
 
         code_repo = CodeRepo(
             system_component_id=system_component.id,
@@ -188,9 +195,9 @@ def test_get_code_repo_by_provider_and_repository() -> None:
             url="https://github.com/claston/micro-cardservice",
             default_branch="main",
         )
-        repo.db.add(code_repo)
-        repo.db.commit()
-        repo.db.refresh(code_repo)
+        db.add(code_repo)
+        db.commit()
+        db.refresh(code_repo)
 
         by_name = repo.get_code_repo_by_provider_and_repository(
             "github", "claston/micro-cardservice"
@@ -204,16 +211,17 @@ def test_get_code_repo_by_provider_and_repository() -> None:
         assert by_url is not None and by_url.id == code_repo.id
         assert by_slug is not None and by_slug.id == code_repo.id
     finally:
-        repo.db.close()
+        db.close()
 
 
 def test_update_pull_request_and_commit() -> None:
-    repo = build_repo()
+    db = build_db()
+    repo = SqlAlchemyGithubNormalizationRepository(db)
     try:
         system_component = SystemComponent(name="payment-api", description="payments")
-        repo.db.add(system_component)
-        repo.db.commit()
-        repo.db.refresh(system_component)
+        db.add(system_component)
+        db.commit()
+        db.refresh(system_component)
 
         code_repo = CodeRepo(
             system_component_id=system_component.id,
@@ -222,9 +230,9 @@ def test_update_pull_request_and_commit() -> None:
             url="https://github.com/acme/payment-api",
             default_branch="main",
         )
-        repo.db.add(code_repo)
-        repo.db.commit()
-        repo.db.refresh(code_repo)
+        db.add(code_repo)
+        db.commit()
+        db.refresh(code_repo)
 
         pull_request = repo.create_pull_request(
             code_repo_id=code_repo.id,
@@ -262,4 +270,4 @@ def test_update_pull_request_and_commit() -> None:
         assert fetched_commit is not None
         assert fetched_commit.message == "new message"
     finally:
-        repo.db.close()
+        db.close()

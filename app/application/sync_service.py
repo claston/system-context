@@ -7,6 +7,7 @@ from uuid import UUID
 
 from app.application.sync_runtime import SyncRuntimeState
 from app.connectors.base import ConnectorRunRequest
+from app.repositories import SyncRepository
 
 logger = logging.getLogger(__name__)
 
@@ -55,26 +56,28 @@ class ThreadPoolSyncJobDispatcher(SyncJobDispatcher):
 class SyncService:
     def __init__(
         self,
-        context_repository,
+        sync_repository: SyncRepository,
         connectors,
         job_dispatcher: SyncJobDispatcher,
         repository_scope: Callable[[], ContextManager] | None = None,
         runtime_state: SyncRuntimeState | None = None,
         normalizer_factories: dict[str, Callable[[Any], Any]] | None = None,
+        strict_normalization: bool = False,
     ) -> None:
-        self.context_repository = context_repository
+        self.sync_repository = sync_repository
         self.connectors = connectors
         self.job_dispatcher = job_dispatcher
         self.repository_scope = repository_scope
         self.runtime_state = runtime_state
         self.normalizer_factories = normalizer_factories or {}
+        self.strict_normalization = strict_normalization
 
     def trigger_sync(self, connector_name: str, request: ConnectorRunRequest):
         if self.runtime_state and self.runtime_state.is_shutting_down():
             raise SyncShuttingDownError("sync service is shutting down")
         if connector_name not in self.connectors:
             raise UnknownConnectorError(f"unknown connector: {connector_name}")
-        sync_run = self.context_repository.create_sync_run(
+        sync_run = self.sync_repository.create_sync_run(
             connector_name=connector_name,
             status="running",
             records_processed=0,
@@ -92,7 +95,7 @@ class SyncService:
     @contextmanager
     def _repository_context(self):
         if self.repository_scope is None:
-            yield self.context_repository
+            yield self.sync_repository
             return
         with self.repository_scope() as repo:
             yield repo
@@ -128,6 +131,7 @@ class SyncService:
             with self._repository_context() as repo:
                 inserted_events_count = 0
                 processed_records_count = max(0, batch.records_processed)
+                warning_summary = list(getattr(batch, "warnings", []))
                 if batch.items:
                     inserted_events = repo.create_connector_raw_events(
                         sync_run_id=sync_run_id,
@@ -144,7 +148,22 @@ class SyncService:
                 if connector_name in self.normalizer_factories:
                     try:
                         normalizer = self.normalizer_factories[connector_name](repo)
-                        normalizer.normalize_sync_run(sync_run_id)
+                        normalization_summary = normalizer.normalize_sync_run(sync_run_id)
+                        if isinstance(normalization_summary, dict):
+                            normalization_errors = normalization_summary.get("errors") or []
+                            normalization_skipped = int(
+                                normalization_summary.get("skipped") or 0
+                            )
+                            has_normalization_issues = bool(normalization_errors) or normalization_skipped > 0
+                            if has_normalization_issues:
+                                message = (
+                                    "normalization reported issues: "
+                                    f"skipped={normalization_skipped}, errors={len(normalization_errors)}"
+                                )
+                                if self.strict_normalization:
+                                    all_errors.append(message)
+                                else:
+                                    warning_summary.append(message)
                     except Exception as exc:
                         all_errors.append(
                             f"normalization failed: {type(exc).__name__}: {exc}"
@@ -162,10 +181,27 @@ class SyncService:
                 )
                 if all_errors:
                     error_summary = "; ".join([*all_errors, counter_summary])
-                elif processed_records_count != inserted_events_count:
-                    error_summary = counter_summary
                 else:
                     error_summary = None
+                if warning_summary:
+                    logger.warning(
+                        "Sync run completed with warnings",
+                        extra={
+                            "sync_run_id": str(sync_run_id),
+                            "connector_name": connector_name,
+                            "warnings": warning_summary,
+                            "counter_summary": counter_summary,
+                        },
+                    )
+                elif status == "success" and processed_records_count != inserted_events_count:
+                    logger.info(
+                        "Sync run completed with deduped records",
+                        extra={
+                            "sync_run_id": str(sync_run_id),
+                            "connector_name": connector_name,
+                            "counter_summary": counter_summary,
+                        },
+                    )
                 return repo.update_sync_run(
                     sync_run_id,
                     status=status,
@@ -213,7 +249,7 @@ class SyncService:
             return len(running_sync_runs)
 
     def get_sync_run(self, sync_run_id: UUID):
-        item = self.context_repository.get_sync_run_by_id(sync_run_id)
+        item = self.sync_repository.get_sync_run_by_id(sync_run_id)
         if item is None:
             raise SyncRunNotFoundError(f"sync run not found: {sync_run_id}")
         return item

@@ -20,7 +20,10 @@ from app.connectors import GithubConnector
 from app.db import SessionLocal
 from app.repositories import (
     SqlAlchemyCodeRepoRepository,
-    SqlAlchemyContextDataRepository,
+    SqlAlchemyContextEntityRepository,
+    SqlAlchemyContextQueryRepository,
+    SqlAlchemyGithubNormalizationRepository,
+    SqlAlchemySyncRepository,
     SqlAlchemySystemComponentRepository,
     SystemComponentRepository,
 )
@@ -47,8 +50,20 @@ def get_code_repo_repository(db: Session = Depends(get_db)):
     return SqlAlchemyCodeRepoRepository(db)
 
 
-def get_context_data_repository(db: Session = Depends(get_db)):
-    return SqlAlchemyContextDataRepository(db)
+def get_context_entity_repository(db: Session = Depends(get_db)):
+    return SqlAlchemyContextEntityRepository(db)
+
+
+def get_sync_repository(db: Session = Depends(get_db)):
+    return SqlAlchemySyncRepository(db)
+
+
+def get_context_query_repository(db: Session = Depends(get_db)):
+    return SqlAlchemyContextQueryRepository(db)
+
+
+def get_github_normalization_repository(db: Session = Depends(get_db)):
+    return SqlAlchemyGithubNormalizationRepository(db)
 
 
 def get_system_component_service(
@@ -67,15 +82,15 @@ def get_code_repo_service(
 
 
 def get_context_service(
-    context_repository=Depends(get_context_data_repository),
+    context_query_repository=Depends(get_context_query_repository),
 ) -> ContextService:
-    return ContextService(context_repository)
+    return ContextService(context_query_repository)
 
 
 def get_github_normalization_service(
-    context_repository=Depends(get_context_data_repository),
+    normalization_repository=Depends(get_github_normalization_repository),
 ) -> GithubNormalizationService:
-    return GithubNormalizationService(context_repository)
+    return GithubNormalizationService(normalization_repository)
 
 
 def get_github_connector() -> GithubConnector:
@@ -106,15 +121,24 @@ def get_connector_registry(
 
 
 def get_sync_normalizer_factories():
-    return {"github": lambda repo: GithubNormalizationService(repo)}
+    return {
+        "github": lambda sync_repo: GithubNormalizationService(
+            SqlAlchemyGithubNormalizationRepository(sync_repo.db)
+        )
+    }
 
 
-def get_context_repository_scope():
+def get_sync_strict_normalization_enabled() -> bool:
+    raw_value = os.getenv("SYNC_STRICT_NORMALIZATION", "false").strip().lower()
+    return raw_value in {"1", "true", "yes", "on"}
+
+
+def get_sync_repository_scope():
     @contextmanager
-    def scope() -> Iterator[SqlAlchemyContextDataRepository]:
+    def scope() -> Iterator[SqlAlchemySyncRepository]:
         db = SessionLocal()
         try:
-            yield SqlAlchemyContextDataRepository(db)
+            yield SqlAlchemySyncRepository(db)
         finally:
             db.close()
 
@@ -122,17 +146,19 @@ def get_context_repository_scope():
 
 
 def get_sync_service(
-    context_repository=Depends(get_context_data_repository),
+    sync_repository=Depends(get_sync_repository),
     connectors=Depends(get_connector_registry),
     normalizer_factories=Depends(get_sync_normalizer_factories),
+    strict_normalization=Depends(get_sync_strict_normalization_enabled),
     job_dispatcher: SyncJobDispatcher = Depends(get_sync_job_dispatcher),
-    repository_scope=Depends(get_context_repository_scope),
+    repository_scope=Depends(get_sync_repository_scope),
     runtime_state: SyncRuntimeState = Depends(get_sync_runtime_state),
 ) -> SyncService:
     return SyncService(
-        context_repository=context_repository,
+        sync_repository=sync_repository,
         connectors=connectors,
         normalizer_factories=normalizer_factories,
+        strict_normalization=strict_normalization,
         job_dispatcher=job_dispatcher,
         repository_scope=repository_scope,
         runtime_state=runtime_state,
@@ -160,10 +186,10 @@ class _NoopSyncJobDispatcher(SyncJobDispatcher):
 
 
 def _mark_running_sync_runs_failed(error_summary: str) -> int:
-    scope_factory = get_context_repository_scope()
-    with scope_factory() as context_repository:
+    scope_factory = get_sync_repository_scope()
+    with scope_factory() as sync_repository:
         sync_service = SyncService(
-            context_repository=context_repository,
+            sync_repository=sync_repository,
             connectors={},
             job_dispatcher=_NoopSyncJobDispatcher(),
             repository_scope=None,

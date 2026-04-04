@@ -1,21 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.application import ContextService, SystemComponentNotFoundError
-from app.dependencies import get_context_data_repository, get_context_service
-from app.models import SystemComponent
+from app.dependencies import get_context_service
 from app.schemas import AgentContextRequest, AgentContextResponse
 
 router = APIRouter()
 
 
 @router.get("/context/system/current-state")
-def get_system_current_state(context_repo=Depends(get_context_data_repository)):
-    return {
-        "system_component_count": context_repo.db.query(SystemComponent).count(),
-        "code_repo_count": len(context_repo.list_code_repos()),
-        "deployment_count": len(context_repo.list_deployments()),
-        "runtime_snapshot_count": len(context_repo.list_runtime_snapshots()),
-    }
+def get_system_current_state(
+    context_service: ContextService = Depends(get_context_service),
+):
+    return context_service.get_system_current_state()
 
 
 @router.get("/context/system-component/{name}", response_model=AgentContextResponse)

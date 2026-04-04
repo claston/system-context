@@ -117,11 +117,13 @@ class ConfigurableGithubConnector:
         *,
         items=None,
         errors=None,
+        warnings=None,
         records_processed: int | None = None,
     ) -> None:
         self.requests = []
         self.items = list(items or [])
         self.errors = list(errors or [])
+        self.warnings = list(warnings or [])
         self.records_processed = (
             records_processed if records_processed is not None else len(self.items)
         )
@@ -133,6 +135,7 @@ class ConfigurableGithubConnector:
             records_processed=self.records_processed,
             items=list(self.items),
             errors=list(self.errors),
+            warnings=list(self.warnings),
             latest_cursor_by_target={},
         )
 
@@ -152,22 +155,23 @@ class FakeRepositoryScope:
 
 
 class FakeNormalizer:
-    def __init__(self, should_fail: bool = False) -> None:
+    def __init__(self, should_fail: bool = False, summary: dict | None = None) -> None:
         self.should_fail = should_fail
         self.calls = []
+        self.summary = summary or {}
 
     def normalize_sync_run(self, sync_run_id: UUID):
         self.calls.append(sync_run_id)
         if self.should_fail:
             raise RuntimeError("normalization boom")
-        return {"sync_run_id": sync_run_id}
+        return {"sync_run_id": sync_run_id, **self.summary}
 
 
 def test_sync_service_triggers_running_and_dispatches_job() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
     )
@@ -193,7 +197,7 @@ def test_sync_service_executes_and_marks_success() -> None:
     dispatcher = FakeSyncJobDispatcher()
     connector = FakeGithubConnector()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
@@ -223,7 +227,7 @@ def test_sync_service_executes_and_marks_failed() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector(should_fail=True)},
         job_dispatcher=dispatcher,
     )
@@ -247,7 +251,7 @@ def test_sync_service_get_sync_run_raises_when_not_found() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
     )
@@ -267,7 +271,7 @@ def test_execute_sync_uses_repository_scope_for_background_updates() -> None:
     dispatcher = FakeSyncJobDispatcher()
     scope = FakeRepositoryScope(worker_repo)
     service = SyncService(
-        context_repository=request_repo,
+        sync_repository=request_repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
         repository_scope=scope,
@@ -298,7 +302,7 @@ def test_execute_sync_passes_existing_cursor_to_connector() -> None:
     dispatcher = FakeSyncJobDispatcher()
     connector = FakeGithubConnector()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
@@ -324,7 +328,7 @@ def test_execute_sync_runs_registered_normalizer_after_successful_ingestion() ->
     connector = FakeGithubConnector()
     normalizer = FakeNormalizer()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
         normalizer_factories={"github": lambda _repo: normalizer},
@@ -350,7 +354,7 @@ def test_execute_sync_marks_partial_when_normalization_fails() -> None:
     connector = FakeGithubConnector()
     normalizer = FakeNormalizer(should_fail=True)
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
         normalizer_factories={"github": lambda _repo: normalizer},
@@ -382,7 +386,7 @@ def test_execute_sync_marks_partial_when_connector_has_mixed_result() -> None:
         records_processed=1,
     )
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
@@ -411,7 +415,7 @@ def test_execute_sync_marks_failed_when_connector_returns_only_errors() -> None:
         records_processed=0,
     )
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
@@ -444,7 +448,7 @@ def test_execute_sync_keeps_processed_counter_when_inserted_is_zero() -> None:
         records_processed=2,
     )
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": connector},
         job_dispatcher=dispatcher,
     )
@@ -461,6 +465,66 @@ def test_execute_sync_keeps_processed_counter_when_inserted_is_zero() -> None:
 
     assert result["status"] == "success"
     assert result["records_processed"] == 2
+    assert result["error_summary"] is None
+
+
+def test_execute_sync_keeps_success_when_connector_has_only_warnings() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = ConfigurableGithubConnector(
+        items=[{"kind": "pull_request"}],
+        warnings=["acme/payment-api: pagination limit hit for pull requests"],
+        records_processed=1,
+    )
+    service = SyncService(
+        sync_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "success"
+    assert result["records_processed"] == 1
+    assert result["error_summary"] is None
+
+
+def test_execute_sync_marks_partial_in_strict_mode_when_normalization_reports_issues() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = FakeGithubConnector()
+    normalizer = FakeNormalizer(summary={"skipped": 2, "errors": ["missing repo"]})
+    service = SyncService(
+        sync_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+        normalizer_factories={"github": lambda _repo: normalizer},
+        strict_normalization=True,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "partial"
+    assert result["records_processed"] == 2
+    assert "normalization reported issues: skipped=2, errors=1" in (
+        result["error_summary"] or ""
+    )
 
 
 def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:
@@ -469,7 +533,7 @@ def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:
     runtime_state = SyncRuntimeState()
     runtime_state.begin_shutdown()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
         runtime_state=runtime_state,
@@ -494,7 +558,7 @@ def test_execute_sync_marks_failed_when_shutdown_started_before_job() -> None:
     dispatcher = FakeSyncJobDispatcher()
     runtime_state = SyncRuntimeState()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
         runtime_state=runtime_state,
@@ -523,7 +587,7 @@ def test_mark_running_sync_runs_failed_updates_orphaned_runs() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
     service = SyncService(
-        context_repository=repo,
+        sync_repository=repo,
         connectors={"github": FakeGithubConnector()},
         job_dispatcher=dispatcher,
     )
