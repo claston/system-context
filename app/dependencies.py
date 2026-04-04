@@ -79,6 +79,7 @@ def get_github_connector() -> GithubConnector:
         owner=os.getenv("GITHUB_OWNER"),
         repos=repos,
         per_page=int(os.getenv("GITHUB_PER_PAGE", "20")),
+        lookback_minutes=int(os.getenv("GITHUB_SYNC_LOOKBACK_MINUTES", "60")),
     )
 
 

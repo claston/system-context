@@ -175,11 +175,48 @@ class SyncRun(Base):
 
 class ConnectorRawEvent(Base):
     __tablename__ = "connector_raw_event"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_name",
+            "target_key",
+            "source_key",
+            name="connector_raw_event_identity_key",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_run_id = Column(UUID(as_uuid=True), ForeignKey("sync_run.id", ondelete="CASCADE"), nullable=False)
     connector_name = Column(String(100), nullable=False)
+    target_key = Column(String(255), nullable=False)
+    source_key = Column(String(512), nullable=False)
     payload = Column(JSON, nullable=False)
     collected_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ConnectorSyncState(Base):
+    __tablename__ = "connector_sync_state"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_name",
+            "target_key",
+            name="connector_sync_state_connector_target_key",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connector_name = Column(String(100), nullable=False)
+    target_key = Column(String(255), nullable=False)
+    last_cursor = Column(String(100), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

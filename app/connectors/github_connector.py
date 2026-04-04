@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -16,6 +17,7 @@ class GithubConnector:
         owner: str | None = None,
         repos: Iterable[str] | None = None,
         per_page: int = 20,
+        lookback_minutes: int = 60,
         timeout_seconds: float = 10.0,
         client: httpx.Client | None = None,
     ) -> None:
@@ -23,6 +25,7 @@ class GithubConnector:
         self.owner = owner.strip() if owner else None
         self.repos = [repo.strip() for repo in (repos or []) if repo and repo.strip()]
         self.per_page = per_page
+        self.lookback_minutes = max(0, lookback_minutes)
         self._client = client or httpx.Client(
             base_url="https://api.github.com",
             timeout=timeout_seconds,
@@ -63,13 +66,39 @@ class GithubConnector:
             raise RuntimeError(f"{response.status_code} for {path}: {snippet}")
         return response.json()
 
-    def _collect_pull_requests(self, owner: str, repo: str) -> list[dict[str, Any]]:
+    def _parse_iso_datetime(self, value: str | None) -> datetime | None:
+        if not value:
+            return None
+        normalized = value.strip()
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    def _collect_pull_requests(
+        self,
+        owner: str,
+        repo: str,
+        since: datetime | None = None,
+    ) -> tuple[list[dict[str, Any]], datetime | None]:
         payload = self._request_json(
             f"/repos/{owner}/{repo}/pulls",
             {"state": "all", "per_page": self.per_page, "sort": "updated", "direction": "desc"},
         )
         items: list[dict[str, Any]] = []
+        latest_seen: datetime | None = None
         for pr in payload:
+            updated_at_raw = pr.get("updated_at")
+            updated_at = self._parse_iso_datetime(updated_at_raw)
+            if updated_at is not None and (latest_seen is None or updated_at > latest_seen):
+                latest_seen = updated_at
+            if since is not None and updated_at is not None and updated_at <= since:
+                continue
             items.append(
                 {
                     "kind": "pull_request",
@@ -80,20 +109,35 @@ class GithubConnector:
                     "state": pr.get("state"),
                     "url": pr.get("html_url"),
                     "author": (pr.get("user") or {}).get("login"),
-                    "updated_at": pr.get("updated_at"),
+                    "updated_at": updated_at_raw,
+                    "source_key": f"pull_request:{pr.get('number')}",
                 }
             )
-        return items
+        return items, latest_seen
 
-    def _collect_commits(self, owner: str, repo: str) -> list[dict[str, Any]]:
+    def _collect_commits(
+        self,
+        owner: str,
+        repo: str,
+        since: datetime | None = None,
+    ) -> tuple[list[dict[str, Any]], datetime | None]:
         payload = self._request_json(
             f"/repos/{owner}/{repo}/commits",
             {"per_page": self.per_page},
         )
         items: list[dict[str, Any]] = []
+        latest_seen: datetime | None = None
         for commit in payload:
             commit_block = commit.get("commit") or {}
             commit_author = commit_block.get("author") or {}
+            committed_at_raw = commit_author.get("date")
+            committed_at = self._parse_iso_datetime(committed_at_raw)
+            if committed_at is not None and (
+                latest_seen is None or committed_at > latest_seen
+            ):
+                latest_seen = committed_at
+            if since is not None and committed_at is not None and committed_at <= since:
+                continue
             items.append(
                 {
                     "kind": "commit",
@@ -104,10 +148,11 @@ class GithubConnector:
                     "url": commit.get("html_url"),
                     "author": (commit.get("author") or {}).get("login")
                     or commit_author.get("name"),
-                    "committed_at": commit_author.get("date"),
+                    "committed_at": committed_at_raw,
+                    "source_key": f"commit:{commit.get('sha')}",
                 }
             )
-        return items
+        return items, latest_seen
 
     def collect(self, request: ConnectorRunRequest) -> ConnectorBatch:
         targets = self._resolve_targets(request)
@@ -118,11 +163,29 @@ class GithubConnector:
 
         items: list[dict[str, Any]] = []
         errors: list[str] = []
+        latest_cursor_by_target: dict[str, str] = {}
         for target in targets:
             try:
                 owner, repo = target.split("/", 1)
-                items.extend(self._collect_pull_requests(owner, repo))
-                items.extend(self._collect_commits(owner, repo))
+                since = self._parse_iso_datetime(request.cursor_by_target.get(target))
+                if since is not None and self.lookback_minutes > 0:
+                    since = since - timedelta(minutes=self.lookback_minutes)
+                pull_items, pull_latest_seen = self._collect_pull_requests(
+                    owner, repo, since=since
+                )
+                commit_items, commit_latest_seen = self._collect_commits(
+                    owner, repo, since=since
+                )
+                items.extend(pull_items)
+                items.extend(commit_items)
+
+                latest_seen = pull_latest_seen
+                if commit_latest_seen is not None and (
+                    latest_seen is None or commit_latest_seen > latest_seen
+                ):
+                    latest_seen = commit_latest_seen
+                if latest_seen is not None:
+                    latest_cursor_by_target[target] = latest_seen.isoformat()
             except Exception as exc:
                 errors.append(f"{target}: {exc}")
 
@@ -131,4 +194,5 @@ class GithubConnector:
             records_processed=len(items),
             items=items,
             errors=errors,
+            latest_cursor_by_target=latest_cursor_by_target,
         )

@@ -24,6 +24,7 @@ DEFAULT_REQUIRED_TABLES = [
     "dependency",
     "sync_run",
     "connector_raw_event",
+    "connector_sync_state",
 ]
 
 

@@ -123,3 +123,120 @@ def test_collect_requires_target_repository() -> None:
         assert "No GitHub repository target configured" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_collect_filters_items_using_cursor_and_returns_latest_cursor() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/acme/payment-api/pulls":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 101,
+                        "number": 12,
+                        "title": "feat: old",
+                        "state": "open",
+                        "html_url": "https://github.com/acme/payment-api/pull/12",
+                        "updated_at": "2026-04-03T12:00:00Z",
+                        "user": {"login": "alice"},
+                    },
+                    {
+                        "id": 102,
+                        "number": 13,
+                        "title": "feat: new",
+                        "state": "open",
+                        "html_url": "https://github.com/acme/payment-api/pull/13",
+                        "updated_at": "2026-04-03T12:01:00Z",
+                        "user": {"login": "alice"},
+                    },
+                ],
+            )
+        if request.url.path == "/repos/acme/payment-api/commits":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "old1",
+                        "html_url": "https://github.com/acme/payment-api/commit/old1",
+                        "commit": {
+                            "message": "fix: old",
+                            "author": {"name": "bob", "date": "2026-04-03T12:00:10Z"},
+                        },
+                        "author": {"login": "bob"},
+                    },
+                    {
+                        "sha": "new1",
+                        "html_url": "https://github.com/acme/payment-api/commit/new1",
+                        "commit": {
+                            "message": "fix: new",
+                            "author": {"name": "bob", "date": "2026-04-03T12:02:00Z"},
+                        },
+                        "author": {"login": "bob"},
+                    },
+                ],
+            )
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = build_mock_client(handler)
+    connector = GithubConnector(client=client, repos=["acme/payment-api"], lookback_minutes=0)
+
+    batch = connector.collect(
+        ConnectorRunRequest(
+            cursor_by_target={"acme/payment-api": "2026-04-03T12:00:30Z"}
+        )
+    )
+
+    assert batch.records_processed == 2
+    assert [item["id"] for item in batch.items] == [102, "new1"]
+    assert (
+        batch.latest_cursor_by_target["acme/payment-api"] == "2026-04-03T12:02:00+00:00"
+    )
+
+
+def test_collect_with_lookback_includes_out_of_order_commit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/acme/payment-api/pulls":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 200,
+                        "number": 37,
+                        "title": "docs: sync marker",
+                        "state": "closed",
+                        "html_url": "https://github.com/acme/payment-api/pull/37",
+                        "updated_at": "2026-04-03T23:58:54Z",
+                        "user": {"login": "alice"},
+                    }
+                ],
+            )
+        if request.url.path == "/repos/acme/payment-api/commits":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "f7079671bd93e410ff7270f9ac15b6cdd508f8a9",
+                        "html_url": "https://github.com/acme/payment-api/commit/f7079671bd93e410ff7270f9ac15b6cdd508f8a9",
+                        "commit": {
+                            "message": "docs(readme): add sync marker",
+                            "author": {"name": "bob", "date": "2026-04-03T23:53:28Z"},
+                        },
+                        "author": {"login": "bob"},
+                    }
+                ],
+            )
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = build_mock_client(handler)
+    connector = GithubConnector(client=client, repos=["acme/payment-api"], lookback_minutes=60)
+
+    batch = connector.collect(
+        ConnectorRunRequest(
+            cursor_by_target={"acme/payment-api": "2026-04-03T23:58:54Z"}
+        )
+    )
+
+    assert batch.records_processed == 2
+    assert "commit:f7079671bd93e410ff7270f9ac15b6cdd508f8a9" in {
+        item["source_key"] for item in batch.items
+    }

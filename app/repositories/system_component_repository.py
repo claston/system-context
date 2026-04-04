@@ -1,6 +1,10 @@
+import hashlib
+import json
+from datetime import datetime, timezone
 from typing import List, Protocol
 from uuid import UUID
 
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,6 +13,7 @@ from app.models import (
     CodeRepo,
     Commit,
     ConnectorRawEvent,
+    ConnectorSyncState,
     Dependency,
     Deployment,
     Endpoint,
@@ -104,6 +109,12 @@ class ContextDataRepository(Protocol):
     def create_connector_raw_events(
         self, sync_run_id: UUID, connector_name: str, items: list[dict]
     ) -> List[ConnectorRawEvent]: ...
+
+    def get_connector_sync_cursors(self, connector_name: str) -> dict[str, str]: ...
+
+    def upsert_connector_sync_cursors(
+        self, connector_name: str, cursor_by_target: dict[str, str]
+    ) -> None: ...
 
 
 class SqlAlchemySystemComponentRepository:
@@ -296,19 +307,98 @@ class SqlAlchemyContextDataRepository:
     def create_connector_raw_events(
         self, sync_run_id: UUID, connector_name: str, items: list[dict]
     ) -> List[ConnectorRawEvent]:
+        if not items:
+            return []
+
+        resolved_items: list[tuple[str, str, dict]] = []
+        for item in items:
+            target_key, source_key = self._resolve_event_identity(item)
+            resolved_items.append((target_key, source_key, item))
+
+        seen_batch: set[tuple[str, str]] = set()
+        unique_items: list[tuple[str, str, dict]] = []
+        for target_key, source_key, item in resolved_items:
+            key = (target_key, source_key)
+            if key in seen_batch:
+                continue
+            seen_batch.add(key)
+            unique_items.append((target_key, source_key, item))
+
+        predicates = [
+            and_(
+                ConnectorRawEvent.target_key == target_key,
+                ConnectorRawEvent.source_key == source_key,
+            )
+            for target_key, source_key, _ in unique_items
+        ]
+        existing_keys: set[tuple[str, str]] = set()
+        if predicates:
+            existing_rows = (
+                self.db.query(ConnectorRawEvent.target_key, ConnectorRawEvent.source_key)
+                .filter(
+                    ConnectorRawEvent.connector_name == connector_name,
+                    or_(*predicates),
+                )
+                .all()
+            )
+            existing_keys = set(existing_rows)
+
         events = [
             ConnectorRawEvent(
                 sync_run_id=sync_run_id,
                 connector_name=connector_name,
+                target_key=target_key,
+                source_key=source_key,
                 payload=item,
             )
-            for item in items
+            for target_key, source_key, item in unique_items
+            if (target_key, source_key) not in existing_keys
         ]
+        if not events:
+            return []
+
         self.db.add_all(events)
         self.db.commit()
         for event in events:
             self.db.refresh(event)
         return events
+
+    def get_connector_sync_cursors(self, connector_name: str) -> dict[str, str]:
+        states = (
+            self.db.query(ConnectorSyncState)
+            .filter(ConnectorSyncState.connector_name == connector_name)
+            .all()
+        )
+        return {state.target_key: state.last_cursor for state in states}
+
+    def upsert_connector_sync_cursors(
+        self, connector_name: str, cursor_by_target: dict[str, str]
+    ) -> None:
+        if not cursor_by_target:
+            return
+
+        for target_key, last_cursor in cursor_by_target.items():
+            state = (
+                self.db.query(ConnectorSyncState)
+                .filter(
+                    ConnectorSyncState.connector_name == connector_name,
+                    ConnectorSyncState.target_key == target_key,
+                )
+                .first()
+            )
+            if state is None:
+                state = ConnectorSyncState(
+                    connector_name=connector_name,
+                    target_key=target_key,
+                    last_cursor=last_cursor,
+                )
+                self.db.add(state)
+                continue
+            if self._is_cursor_newer(last_cursor, state.last_cursor):
+                state.last_cursor = last_cursor
+                self.db.add(state)
+
+        self.db.commit()
 
     def get_system_component_by_name(self, system_component_name: str) -> SystemComponent | None:
         return (
@@ -361,3 +451,45 @@ class SqlAlchemyContextDataRepository:
             .filter(Dependency.source_system_component_id == system_component_id)
             .all()
         )
+
+    def _resolve_event_identity(self, item: dict) -> tuple[str, str]:
+        target_key = str(item.get("target_key") or item.get("repository") or "__global__")
+
+        explicit_source = item.get("source_key")
+        if explicit_source:
+            return target_key, str(explicit_source)
+
+        kind = str(item.get("kind") or "item")
+        intrinsic = item.get("id") or item.get("number") or item.get("sha")
+        if intrinsic is not None:
+            return target_key, f"{kind}:{intrinsic}"
+
+        canonical_payload = json.dumps(
+            item,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        payload_hash = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
+        return target_key, f"{kind}:sha256:{payload_hash}"
+
+    def _parse_cursor_datetime(self, value: str) -> datetime | None:
+        if not value:
+            return None
+        normalized = value.strip()
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    def _is_cursor_newer(self, candidate: str, current: str) -> bool:
+        candidate_dt = self._parse_cursor_datetime(candidate)
+        current_dt = self._parse_cursor_datetime(current)
+        if candidate_dt is None or current_dt is None:
+            return candidate != current
+        return candidate_dt > current_dt
