@@ -2,7 +2,7 @@ import logging
 from concurrent.futures import Executor
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Callable, ContextManager
+from typing import Any, Callable, ContextManager
 from uuid import UUID
 
 from app.application.sync_runtime import SyncRuntimeState
@@ -60,12 +60,14 @@ class SyncService:
         job_dispatcher: SyncJobDispatcher,
         repository_scope: Callable[[], ContextManager] | None = None,
         runtime_state: SyncRuntimeState | None = None,
+        normalizer_factories: dict[str, Callable[[Any], Any]] | None = None,
     ) -> None:
         self.context_repository = context_repository
         self.connectors = connectors
         self.job_dispatcher = job_dispatcher
         self.repository_scope = repository_scope
         self.runtime_state = runtime_state
+        self.normalizer_factories = normalizer_factories or {}
 
     def trigger_sync(self, connector_name: str, request: ConnectorRunRequest):
         if self.runtime_state and self.runtime_state.is_shutting_down():
@@ -137,10 +139,20 @@ class SyncService:
                         connector_name=connector_name,
                         cursor_by_target=batch.latest_cursor_by_target,
                     )
-                error_summary = "; ".join(batch.errors) if batch.errors else None
+                all_errors = list(batch.errors)
+                if connector_name in self.normalizer_factories:
+                    try:
+                        normalizer = self.normalizer_factories[connector_name](repo)
+                        normalizer.normalize_sync_run(sync_run_id)
+                    except Exception as exc:
+                        all_errors.append(
+                            f"normalization failed: {type(exc).__name__}: {exc}"
+                        )
+                status = "success" if not all_errors else "partial"
+                error_summary = "; ".join(all_errors) if all_errors else None
                 return repo.update_sync_run(
                     sync_run_id,
-                    status="success",
+                    status=status,
                     records_processed=inserted_events_count,
                     error_summary=error_summary,
                     finished_at=datetime.now(timezone.utc),

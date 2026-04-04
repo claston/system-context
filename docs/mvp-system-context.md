@@ -81,6 +81,7 @@ Current modules:
 - Generic sync execution pipeline (`trigger_sync`/`execute_sync`) with connector registry
 - Background sync execution using isolated repository scope per job (separate DB session from request thread)
 - Raw connector item persistence linked to sync runs (`connector_raw_event`)
+- Automatic GitHub normalization on sync completion (plus manual reprocessing endpoint for retries/operations)
 
 ### Not implemented yet
 
@@ -255,7 +256,7 @@ Response:
 - `[BL-002]` Start minimal normalization pipeline:
   - status: in progress
   - scope: normalize GitHub raw connector payloads into canonical `pull_request`/`commit` entities with idempotent upsert behavior
-  - outcome: first usable normalized context path for agent consumption
+  - outcome: first usable normalized context path for agent consumption (`sync -> normalize` automation implemented for GitHub)
 - `[BL-007]` Make raw-event dedup insertion atomic at DB level:
   - status: pending
   - scope: replace select-then-insert dedup flow with `ON CONFLICT DO NOTHING` semantics for `connector_raw_event_identity_key`
