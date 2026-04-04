@@ -1,0 +1,14 @@
+.git
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.idea
+.vscode
+.env
+.env.*
+ci.db
+uvicorn-*.log
+docs/*.pdf
