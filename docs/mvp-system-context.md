@@ -252,6 +252,18 @@ Response:
   - status: pending
   - scope: normalize raw connector payloads into canonical context entities
   - outcome: stable model for agent consumption
+- `[BL-007]` Make raw-event dedup insertion atomic at DB level:
+  - status: pending
+  - scope: replace select-then-insert dedup flow with `ON CONFLICT DO NOTHING` semantics for `connector_raw_event_identity_key`
+  - outcome: remove race-condition risk under concurrent sync workers
+- `[BL-008]` Add GitHub connector pagination for incremental completeness:
+  - status: pending
+  - scope: paginate PR/commit collection until cursor boundary (with safety caps/rate-limit awareness)
+  - outcome: avoid data loss when delta volume exceeds one page (`GITHUB_PER_PAGE`)
+- `[BL-009]` Align sync status semantics with partial failures:
+  - status: pending
+  - scope: set `sync_run.status=partial` when connector returns mixed success/errors and keep clear processed/inserted counters
+  - outcome: better operational visibility and safer retry decisions
 
 ### Next
 
@@ -267,6 +279,10 @@ Response:
   - status: pending
   - scope: persist changed files, labels, review/merge metadata, and commit-to-PR linkage when available
   - outcome: higher-quality context for agents to reason about impact and where to change code
+- `[BL-010]` Split context repository by bounded concern:
+  - status: pending
+  - scope: separate sync ingestion/cursor persistence from generic context CRUD repository
+  - outcome: lower cognitive load and easier MVP evolution with clearer ownership boundaries
 
 ### Later
 
@@ -307,6 +323,7 @@ Environment variables used by `GithubConnector`:
 - `GITHUB_OWNER` (optional): default owner/org used when `system_component_name` is provided without owner prefix.
 - `GITHUB_REPOS` (optional): comma-separated repository targets in `owner/repo` format.
 - `GITHUB_PER_PAGE` (optional): number of items requested per endpoint call (default: `20`).
+- `GITHUB_SYNC_LOOKBACK_MINUTES` (optional): overlap window applied to cursor cutoff to absorb out-of-order source timestamps (default: `60`).
 
 Target resolution order:
 
