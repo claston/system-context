@@ -104,6 +104,10 @@ def get_connector_registry(
     return {"github": github_connector}
 
 
+def get_sync_normalizer_factories():
+    return {"github": lambda repo: GithubNormalizationService(repo)}
+
+
 def get_context_repository_scope():
     @contextmanager
     def scope() -> Iterator[SqlAlchemyContextDataRepository]:
@@ -119,6 +123,7 @@ def get_context_repository_scope():
 def get_sync_service(
     context_repository=Depends(get_context_data_repository),
     connectors=Depends(get_connector_registry),
+    normalizer_factories=Depends(get_sync_normalizer_factories),
     job_dispatcher: SyncJobDispatcher = Depends(get_sync_job_dispatcher),
     repository_scope=Depends(get_context_repository_scope),
     runtime_state: SyncRuntimeState = Depends(get_sync_runtime_state),
@@ -126,6 +131,7 @@ def get_sync_service(
     return SyncService(
         context_repository=context_repository,
         connectors=connectors,
+        normalizer_factories=normalizer_factories,
         job_dispatcher=job_dispatcher,
         repository_scope=repository_scope,
         runtime_state=runtime_state,

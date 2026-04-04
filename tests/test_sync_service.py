@@ -125,6 +125,18 @@ class FakeRepositoryScope:
         return scope()
 
 
+class FakeNormalizer:
+    def __init__(self, should_fail: bool = False) -> None:
+        self.should_fail = should_fail
+        self.calls = []
+
+    def normalize_sync_run(self, sync_run_id: UUID):
+        self.calls.append(sync_run_id)
+        if self.should_fail:
+            raise RuntimeError("normalization boom")
+        return {"sync_run_id": sync_run_id}
+
+
 def test_sync_service_triggers_running_and_dispatches_job() -> None:
     repo = FakeContextRepository()
     dispatcher = FakeSyncJobDispatcher()
@@ -278,6 +290,61 @@ def test_execute_sync_passes_existing_cursor_to_connector() -> None:
     assert connector.requests[0].cursor_by_target == {
         "acme/payment-api": "2026-04-03T12:00:30Z"
     }
+
+
+def test_execute_sync_runs_registered_normalizer_after_successful_ingestion() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = FakeGithubConnector()
+    normalizer = FakeNormalizer()
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+        normalizer_factories={"github": lambda _repo: normalizer},
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "success"
+    assert normalizer.calls == [running["id"]]
+
+
+def test_execute_sync_marks_partial_when_normalization_fails() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = FakeGithubConnector()
+    normalizer = FakeNormalizer(should_fail=True)
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+        normalizer_factories={"github": lambda _repo: normalizer},
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "partial"
+    assert result["records_processed"] == 2
+    assert "normalization failed: RuntimeError: normalization boom" in (
+        result["error_summary"] or ""
+    )
 
 
 def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:
