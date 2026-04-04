@@ -32,6 +32,7 @@ def test_app_has_refactored_route_surface() -> None:
         "/context/system-component/{name}/runtime",
         "/context/system-component/{name}/dependencies",
         "/agent/context",
+        "/mcp",
     }
 
     assert expected_paths.issubset(paths)
