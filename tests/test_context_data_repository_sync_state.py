@@ -56,6 +56,62 @@ def test_create_connector_raw_events_is_idempotent_by_source_key() -> None:
         repo.db.close()
 
 
+def test_create_connector_raw_events_is_resilient_to_stale_duplicate_reads(
+    monkeypatch,
+) -> None:
+    repo = build_repo()
+    try:
+        run1 = repo.create_sync_run(
+            connector_name="github",
+            status="running",
+            records_processed=0,
+            started_at=datetime.now(timezone.utc),
+        )
+        run2 = repo.create_sync_run(
+            connector_name="github",
+            status="running",
+            records_processed=0,
+            started_at=datetime.now(timezone.utc),
+        )
+        items = [
+            {
+                "kind": "pull_request",
+                "repository": "acme/payment-api",
+                "number": 12,
+                "source_key": "pull_request:12",
+            }
+        ]
+
+        repo.create_connector_raw_events(run1.id, "github", items)
+
+        original_query = repo.db.query
+
+        def stale_query(*entities, **kwargs):
+            if (
+                len(entities) == 2
+                and entities[0] is ConnectorRawEvent.target_key
+                and entities[1] is ConnectorRawEvent.source_key
+            ):
+                class EmptyQuery:
+                    def filter(self, *args, **kwargs):
+                        return self
+
+                    def all(self):
+                        return []
+
+                return EmptyQuery()
+            return original_query(*entities, **kwargs)
+
+        monkeypatch.setattr(repo.db, "query", stale_query)
+
+        second_insert = repo.create_connector_raw_events(run2.id, "github", items)
+
+        assert len(second_insert) == 0
+        assert repo.db.query(ConnectorRawEvent).count() == 1
+    finally:
+        repo.db.close()
+
+
 def test_sync_cursor_state_round_trip() -> None:
     repo = build_repo()
     try:

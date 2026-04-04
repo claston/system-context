@@ -258,15 +258,15 @@ Response:
   - scope: normalize GitHub raw connector payloads into canonical `pull_request`/`commit` entities with idempotent upsert behavior
   - outcome: first usable normalized context path for agent consumption (`sync -> normalize` automation implemented for GitHub)
 - `[BL-007]` Make raw-event dedup insertion atomic at DB level:
-  - status: pending
+  - status: done
   - scope: replace select-then-insert dedup flow with `ON CONFLICT DO NOTHING` semantics for `connector_raw_event_identity_key`
   - outcome: remove race-condition risk under concurrent sync workers
 - `[BL-008]` Add GitHub connector pagination for incremental completeness:
-  - status: pending
+  - status: done
   - scope: paginate PR/commit collection until cursor boundary (with safety caps/rate-limit awareness)
   - outcome: avoid data loss when delta volume exceeds one page (`GITHUB_PER_PAGE`)
 - `[BL-009]` Align sync status semantics with partial failures:
-  - status: pending
+  - status: done
   - scope: set `sync_run.status=partial` when connector returns mixed success/errors and keep clear processed/inserted counters
   - outcome: better operational visibility and safer retry decisions
 
@@ -328,6 +328,7 @@ Environment variables used by `GithubConnector`:
 - `GITHUB_OWNER` (optional): default owner/org used when `system_component_name` is provided without owner prefix.
 - `GITHUB_REPOS` (optional): comma-separated repository targets in `owner/repo` format.
 - `GITHUB_PER_PAGE` (optional): number of items requested per endpoint call (default: `20`).
+- `GITHUB_MAX_PAGES` (optional): safety cap for pagination depth per endpoint call (default: `10`).
 - `GITHUB_SYNC_LOOKBACK_MINUTES` (optional): overlap window applied to cursor cutoff to absorb out-of-order source timestamps (default: `60`).
 
 Target resolution order:

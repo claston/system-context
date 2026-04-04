@@ -111,6 +111,32 @@ class FakeGithubConnector:
         )
 
 
+class ConfigurableGithubConnector:
+    def __init__(
+        self,
+        *,
+        items=None,
+        errors=None,
+        records_processed: int | None = None,
+    ) -> None:
+        self.requests = []
+        self.items = list(items or [])
+        self.errors = list(errors or [])
+        self.records_processed = (
+            records_processed if records_processed is not None else len(self.items)
+        )
+
+    def collect(self, request: ConnectorRunRequest) -> ConnectorBatch:
+        self.requests.append(request)
+        return ConnectorBatch(
+            connector_name="github",
+            records_processed=self.records_processed,
+            items=list(self.items),
+            errors=list(self.errors),
+            latest_cursor_by_target={},
+        )
+
+
 class FakeRepositoryScope:
     def __init__(self, repo: FakeContextRepository) -> None:
         self.repo = repo
@@ -345,6 +371,96 @@ def test_execute_sync_marks_partial_when_normalization_fails() -> None:
     assert "normalization failed: RuntimeError: normalization boom" in (
         result["error_summary"] or ""
     )
+
+
+def test_execute_sync_marks_partial_when_connector_has_mixed_result() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = ConfigurableGithubConnector(
+        items=[{"kind": "pull_request"}],
+        errors=["acme/broken-api: 500"],
+        records_processed=1,
+    )
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "partial"
+    assert result["records_processed"] == 1
+    assert "processed=1, inserted=1" in (result["error_summary"] or "")
+
+
+def test_execute_sync_marks_failed_when_connector_returns_only_errors() -> None:
+    repo = FakeContextRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = ConfigurableGithubConnector(
+        items=[],
+        errors=["acme/broken-api: 500"],
+        records_processed=0,
+    )
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "failed"
+    assert result["records_processed"] == 0
+    assert "processed=0, inserted=0" in (result["error_summary"] or "")
+
+
+def test_execute_sync_keeps_processed_counter_when_inserted_is_zero() -> None:
+    class DuplicateDropRepository(FakeContextRepository):
+        def create_connector_raw_events(self, sync_run_id: UUID, connector_name: str, items):
+            return []
+
+    repo = DuplicateDropRepository()
+    dispatcher = FakeSyncJobDispatcher()
+    connector = ConfigurableGithubConnector(
+        items=[{"kind": "pull_request"}, {"kind": "commit"}],
+        errors=[],
+        records_processed=2,
+    )
+    service = SyncService(
+        context_repository=repo,
+        connectors={"github": connector},
+        job_dispatcher=dispatcher,
+    )
+    running = service.trigger_sync(
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    result = service.execute_sync(
+        sync_run_id=running["id"],
+        connector_name="github",
+        request=ConnectorRunRequest(system_component_name="payment-api"),
+    )
+
+    assert result["status"] == "success"
+    assert result["records_processed"] == 2
 
 
 def test_trigger_sync_rejects_when_app_is_shutting_down() -> None:

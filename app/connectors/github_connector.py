@@ -17,6 +17,7 @@ class GithubConnector:
         owner: str | None = None,
         repos: Iterable[str] | None = None,
         per_page: int = 20,
+        max_pages: int = 10,
         lookback_minutes: int = 60,
         timeout_seconds: float = 10.0,
         client: httpx.Client | None = None,
@@ -25,6 +26,7 @@ class GithubConnector:
         self.owner = owner.strip() if owner else None
         self.repos = [repo.strip() for repo in (repos or []) if repo and repo.strip()]
         self.per_page = per_page
+        self.max_pages = max(1, max_pages)
         self.lookback_minutes = max(0, lookback_minutes)
         self._client = client or httpx.Client(
             base_url="https://api.github.com",
@@ -85,74 +87,118 @@ class GithubConnector:
         owner: str,
         repo: str,
         since: datetime | None = None,
-    ) -> tuple[list[dict[str, Any]], datetime | None]:
-        payload = self._request_json(
-            f"/repos/{owner}/{repo}/pulls",
-            {"state": "all", "per_page": self.per_page, "sort": "updated", "direction": "desc"},
-        )
+    ) -> tuple[list[dict[str, Any]], datetime | None, bool]:
         items: list[dict[str, Any]] = []
         latest_seen: datetime | None = None
-        for pr in payload:
-            updated_at_raw = pr.get("updated_at")
-            updated_at = self._parse_iso_datetime(updated_at_raw)
-            if updated_at is not None and (latest_seen is None or updated_at > latest_seen):
-                latest_seen = updated_at
-            if since is not None and updated_at is not None and updated_at <= since:
-                continue
-            items.append(
+        pagination_limit_hit = False
+        for page in range(1, self.max_pages + 1):
+            payload = self._request_json(
+                f"/repos/{owner}/{repo}/pulls",
                 {
-                    "kind": "pull_request",
-                    "repository": f"{owner}/{repo}",
-                    "id": pr.get("id"),
-                    "number": pr.get("number"),
-                    "title": pr.get("title"),
-                    "state": pr.get("state"),
-                    "url": pr.get("html_url"),
-                    "author": (pr.get("user") or {}).get("login"),
-                    "updated_at": updated_at_raw,
-                    "source_key": f"pull_request:{pr.get('number')}",
-                }
+                    "state": "all",
+                    "per_page": self.per_page,
+                    "sort": "updated",
+                    "direction": "desc",
+                    "page": page,
+                },
             )
-        return items, latest_seen
+            if not payload:
+                break
+
+            reached_cursor_boundary = False
+            for pr in payload:
+                updated_at_raw = pr.get("updated_at")
+                updated_at = self._parse_iso_datetime(updated_at_raw)
+                if updated_at is not None and (
+                    latest_seen is None or updated_at > latest_seen
+                ):
+                    latest_seen = updated_at
+                if since is not None and updated_at is not None and updated_at <= since:
+                    reached_cursor_boundary = True
+                    continue
+                items.append(
+                    {
+                        "kind": "pull_request",
+                        "repository": f"{owner}/{repo}",
+                        "id": pr.get("id"),
+                        "number": pr.get("number"),
+                        "title": pr.get("title"),
+                        "state": pr.get("state"),
+                        "url": pr.get("html_url"),
+                        "author": (pr.get("user") or {}).get("login"),
+                        "updated_at": updated_at_raw,
+                        "source_key": f"pull_request:{pr.get('number')}",
+                    }
+                )
+
+            if since is not None and reached_cursor_boundary:
+                break
+
+            if len(payload) < self.per_page:
+                break
+
+            if page == self.max_pages:
+                pagination_limit_hit = True
+                break
+
+        return items, latest_seen, pagination_limit_hit
 
     def _collect_commits(
         self,
         owner: str,
         repo: str,
         since: datetime | None = None,
-    ) -> tuple[list[dict[str, Any]], datetime | None]:
-        payload = self._request_json(
-            f"/repos/{owner}/{repo}/commits",
-            {"per_page": self.per_page},
-        )
+    ) -> tuple[list[dict[str, Any]], datetime | None, bool]:
         items: list[dict[str, Any]] = []
         latest_seen: datetime | None = None
-        for commit in payload:
-            commit_block = commit.get("commit") or {}
-            commit_author = commit_block.get("author") or {}
-            committed_at_raw = commit_author.get("date")
-            committed_at = self._parse_iso_datetime(committed_at_raw)
-            if committed_at is not None and (
-                latest_seen is None or committed_at > latest_seen
-            ):
-                latest_seen = committed_at
-            if since is not None and committed_at is not None and committed_at <= since:
-                continue
-            items.append(
-                {
-                    "kind": "commit",
-                    "repository": f"{owner}/{repo}",
-                    "id": commit.get("sha"),
-                    "sha": commit.get("sha"),
-                    "message": commit_block.get("message"),
-                    "url": commit.get("html_url"),
-                    "author": (commit.get("author") or {}).get("login")
-                    or commit_author.get("name"),
-                    "committed_at": committed_at_raw,
-                    "source_key": f"commit:{commit.get('sha')}",
-                }
+        pagination_limit_hit = False
+        for page in range(1, self.max_pages + 1):
+            payload = self._request_json(
+                f"/repos/{owner}/{repo}/commits",
+                {"per_page": self.per_page, "page": page},
             )
-        return items, latest_seen
+            if not payload:
+                break
+
+            reached_cursor_boundary = False
+            for commit in payload:
+                commit_block = commit.get("commit") or {}
+                commit_author = commit_block.get("author") or {}
+                committed_at_raw = commit_author.get("date")
+                committed_at = self._parse_iso_datetime(committed_at_raw)
+                if committed_at is not None and (
+                    latest_seen is None or committed_at > latest_seen
+                ):
+                    latest_seen = committed_at
+                if since is not None and committed_at is not None and committed_at <= since:
+                    reached_cursor_boundary = True
+                    continue
+                items.append(
+                    {
+                        "kind": "commit",
+                        "repository": f"{owner}/{repo}",
+                        "id": commit.get("sha"),
+                        "sha": commit.get("sha"),
+                        "message": commit_block.get("message"),
+                        "url": commit.get("html_url"),
+                        "author": (commit.get("author") or {}).get("login")
+                        or commit_author.get("name"),
+                        "committed_at": committed_at_raw,
+                        "source_key": f"commit:{commit.get('sha')}",
+                    }
+                )
+
+            if since is not None and reached_cursor_boundary:
+                break
+
+            if len(payload) < self.per_page:
+                break
+
+            if page == self.max_pages:
+                pagination_limit_hit = True
+                break
+
+        return items, latest_seen, pagination_limit_hit
 
     def collect(self, request: ConnectorRunRequest) -> ConnectorBatch:
         targets = self._resolve_targets(request)
@@ -170,14 +216,20 @@ class GithubConnector:
                 since = self._parse_iso_datetime(request.cursor_by_target.get(target))
                 if since is not None and self.lookback_minutes > 0:
                     since = since - timedelta(minutes=self.lookback_minutes)
-                pull_items, pull_latest_seen = self._collect_pull_requests(
+                pull_items, pull_latest_seen, pull_limit_hit = self._collect_pull_requests(
                     owner, repo, since=since
                 )
-                commit_items, commit_latest_seen = self._collect_commits(
+                commit_items, commit_latest_seen, commit_limit_hit = self._collect_commits(
                     owner, repo, since=since
                 )
                 items.extend(pull_items)
                 items.extend(commit_items)
+                if pull_limit_hit:
+                    errors.append(
+                        f"{target}: pagination limit hit for pull requests on {target}"
+                    )
+                if commit_limit_hit:
+                    errors.append(f"{target}: pagination limit hit for commits on {target}")
 
                 latest_seen = pull_latest_seen
                 if commit_latest_seen is not None and (
