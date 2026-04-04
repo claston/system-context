@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.repositories import ContextDataRepository
+from app.repositories import GithubNormalizationRepository
 
 
 class NormalizationSyncRunNotFoundError(Exception):
@@ -16,11 +16,11 @@ class UnsupportedNormalizationConnectorError(Exception):
 
 
 class GithubNormalizationService:
-    def __init__(self, context_repository: ContextDataRepository) -> None:
-        self.context_repository = context_repository
+    def __init__(self, normalization_repository: GithubNormalizationRepository) -> None:
+        self.normalization_repository = normalization_repository
 
     def normalize_sync_run(self, sync_run_id: UUID) -> dict[str, Any]:
-        sync_run = self.context_repository.get_sync_run_by_id(sync_run_id)
+        sync_run = self.normalization_repository.get_sync_run_by_id(sync_run_id)
         if sync_run is None:
             raise NormalizationSyncRunNotFoundError(
                 f"sync run not found: {sync_run_id}"
@@ -32,7 +32,7 @@ class GithubNormalizationService:
                 f"unsupported connector for github normalization: {connector_name}"
             )
 
-        raw_events = self.context_repository.list_connector_raw_events_by_sync_run(
+        raw_events = self.normalization_repository.list_connector_raw_events_by_sync_run(
             sync_run_id=sync_run_id,
             connector_name="github",
         )
@@ -72,7 +72,7 @@ class GithubNormalizationService:
 
             if repository_name not in code_repo_cache:
                 code_repo_cache[repository_name] = (
-                    self.context_repository.get_code_repo_by_provider_and_repository(
+                    self.normalization_repository.get_code_repo_by_provider_and_repository(
                         provider="github",
                         repository=repository_name,
                     )
@@ -133,16 +133,16 @@ class GithubNormalizationService:
             "merged_at": merged_at,
         }
 
-        existing = self.context_repository.get_pull_request_by_repo_and_number(
+        existing = self.normalization_repository.get_pull_request_by_repo_and_number(
             code_repo_id=code_repo_id,
             number=number,
         )
         if existing is None:
-            self.context_repository.create_pull_request(**data)
+            self.normalization_repository.create_pull_request(**data)
             return True
 
         pull_request_id = self._get_value(existing, "id")
-        self.context_repository.update_pull_request(pull_request_id, **data)
+        self.normalization_repository.update_pull_request(pull_request_id, **data)
         return False
 
     def _normalize_commit(self, code_repo_id: UUID, payload: dict[str, Any]) -> bool:
@@ -161,16 +161,16 @@ class GithubNormalizationService:
         if committed_at is not None:
             data["committed_at"] = committed_at
 
-        existing = self.context_repository.get_commit_by_repo_and_sha(
+        existing = self.normalization_repository.get_commit_by_repo_and_sha(
             code_repo_id=code_repo_id,
             sha=sha,
         )
         if existing is None:
-            self.context_repository.create_commit(**data)
+            self.normalization_repository.create_commit(**data)
             return True
 
         commit_id = self._get_value(existing, "id")
-        self.context_repository.update_commit(commit_id, **data)
+        self.normalization_repository.update_commit(commit_id, **data)
         return False
 
     def _parse_iso_datetime(self, value: Any) -> datetime | None:

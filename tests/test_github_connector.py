@@ -333,7 +333,7 @@ def test_collect_paginates_pull_requests_and_commits() -> None:
     ]
 
 
-def test_collect_reports_error_when_pagination_limit_is_hit() -> None:
+def test_collect_reports_warning_when_pagination_limit_is_hit() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page", "1"))
         if request.url.path == "/repos/acme/payment-api/pulls":
@@ -379,6 +379,7 @@ def test_collect_reports_error_when_pagination_limit_is_hit() -> None:
     batch = connector.collect(ConnectorRunRequest())
 
     assert batch.records_processed == 2
-    assert len(batch.errors) == 2
-    assert "pagination limit hit for pull requests on acme/payment-api" in batch.errors[0]
-    assert "pagination limit hit for commits on acme/payment-api" in batch.errors[1]
+    assert batch.errors == []
+    assert len(batch.warnings) == 2
+    assert "pagination limit hit for pull requests on acme/payment-api" in batch.warnings[0]
+    assert "pagination limit hit for commits on acme/payment-api" in batch.warnings[1]

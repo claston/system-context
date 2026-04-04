@@ -284,6 +284,8 @@ class SyncRunCreate(BaseModel):
             and self.finished_at < self.started_at
         ):
             raise ValueError("finished_at must be greater than or equal to started_at")
+        if self.status == "success" and self.error_summary:
+            raise ValueError("error_summary must be empty when status is success")
         return self
 
 

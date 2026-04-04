@@ -192,3 +192,20 @@ def test_create_sync_run_with_finished_before_started_returns_400() -> None:
     assert response.status_code == 400
     assert response.json()["detail"] == "Validation failed"
     app.dependency_overrides.clear()
+
+
+def test_create_sync_run_success_with_error_summary_returns_400() -> None:
+    client = build_test_client()
+    response = client.post(
+        "/sync-runs",
+        json={
+            "connector_name": "github",
+            "status": "success",
+            "records_processed": 10,
+            "error_summary": "should not be present",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Validation failed"
+    app.dependency_overrides.clear()

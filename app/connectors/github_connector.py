@@ -209,6 +209,7 @@ class GithubConnector:
 
         items: list[dict[str, Any]] = []
         errors: list[str] = []
+        warnings: list[str] = []
         latest_cursor_by_target: dict[str, str] = {}
         for target in targets:
             try:
@@ -225,11 +226,11 @@ class GithubConnector:
                 items.extend(pull_items)
                 items.extend(commit_items)
                 if pull_limit_hit:
-                    errors.append(
+                    warnings.append(
                         f"{target}: pagination limit hit for pull requests on {target}"
                     )
                 if commit_limit_hit:
-                    errors.append(f"{target}: pagination limit hit for commits on {target}")
+                    warnings.append(f"{target}: pagination limit hit for commits on {target}")
 
                 latest_seen = pull_latest_seen
                 if commit_latest_seen is not None and (
@@ -246,5 +247,6 @@ class GithubConnector:
             records_processed=len(items),
             items=items,
             errors=errors,
+            warnings=warnings,
             latest_cursor_by_target=latest_cursor_by_target,
         )
