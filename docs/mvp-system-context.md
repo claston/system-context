@@ -288,6 +288,10 @@ Response:
   - status: pending
   - scope: separate sync ingestion/cursor persistence from generic context CRUD repository
   - outcome: lower cognitive load and easier MVP evolution with clearer ownership boundaries
+- `[BL-011]` Add bounded historical backfill strategy for high-volume sources:
+  - status: pending
+  - scope: ingest from most recent records backwards up to a configurable cutoff window/budget instead of attempting full-history loads (commits, PRs, logs, and similar high-cardinality streams)
+  - outcome: predictable sync duration/cost and safer onboarding of legacy systems with large historical datasets
 
 ### Later
 
