@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.application import (
     CodeRepoService,
     ContextService,
+    GithubNormalizationService,
     SyncJobDispatcher,
     SyncService,
     SystemComponentService,
@@ -69,6 +70,12 @@ def get_context_service(
     context_repository=Depends(get_context_data_repository),
 ) -> ContextService:
     return ContextService(context_repository)
+
+
+def get_github_normalization_service(
+    context_repository=Depends(get_context_data_repository),
+) -> GithubNormalizationService:
+    return GithubNormalizationService(context_repository)
 
 
 def get_github_connector() -> GithubConnector:

@@ -312,6 +312,18 @@ class SyncRunTriggerRequest(BaseModel):
         return _normalize_non_empty(value)
 
 
+class GithubNormalizationResponse(BaseModel):
+    sync_run_id: UUID
+    connector_name: str
+    raw_events_read: int
+    pull_requests_created: int
+    pull_requests_updated: int
+    commits_created: int
+    commits_updated: int
+    skipped: int
+    errors: list[str]
+
+
 class AgentContextRequest(BaseModel):
     system_component_name: str = Field(min_length=1, max_length=255)
     environment: str | None = Field(default=None, max_length=100)

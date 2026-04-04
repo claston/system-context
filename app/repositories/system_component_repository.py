@@ -116,6 +116,26 @@ class ContextDataRepository(Protocol):
         self, connector_name: str, cursor_by_target: dict[str, str]
     ) -> None: ...
 
+    def list_connector_raw_events_by_sync_run(
+        self, sync_run_id: UUID, connector_name: str | None = None
+    ) -> List[ConnectorRawEvent]: ...
+
+    def get_code_repo_by_provider_and_repository(
+        self, provider: str, repository: str
+    ) -> CodeRepo | None: ...
+
+    def get_pull_request_by_repo_and_number(
+        self, code_repo_id: UUID, number: str
+    ) -> PullRequest | None: ...
+
+    def update_pull_request(self, pull_request_id: UUID, **kwargs) -> PullRequest: ...
+
+    def get_commit_by_repo_and_sha(
+        self, code_repo_id: UUID, sha: str
+    ) -> Commit | None: ...
+
+    def update_commit(self, commit_id: UUID, **kwargs) -> Commit: ...
+
 
 class SqlAlchemySystemComponentRepository:
     def __init__(self, db: Session) -> None:
@@ -399,6 +419,111 @@ class SqlAlchemyContextDataRepository:
                 self.db.add(state)
 
         self.db.commit()
+
+    def list_connector_raw_events_by_sync_run(
+        self, sync_run_id: UUID, connector_name: str | None = None
+    ) -> List[ConnectorRawEvent]:
+        query = self.db.query(ConnectorRawEvent).filter(
+            ConnectorRawEvent.sync_run_id == sync_run_id
+        )
+        if connector_name:
+            query = query.filter(ConnectorRawEvent.connector_name == connector_name)
+        return query.order_by(
+            ConnectorRawEvent.created_at.asc(), ConnectorRawEvent.id.asc()
+        ).all()
+
+    def get_code_repo_by_provider_and_repository(
+        self, provider: str, repository: str
+    ) -> CodeRepo | None:
+        normalized_repository = repository.strip().strip("/")
+        if not normalized_repository:
+            return None
+
+        exact_name_match = (
+            self.db.query(CodeRepo)
+            .filter(
+                CodeRepo.provider == provider,
+                CodeRepo.name == normalized_repository,
+            )
+            .first()
+        )
+        if exact_name_match is not None:
+            return exact_name_match
+
+        url_match = (
+            self.db.query(CodeRepo)
+            .filter(
+                CodeRepo.provider == provider,
+                (
+                    CodeRepo.url.ilike(f"%/{normalized_repository}")
+                    | CodeRepo.url.ilike(f"%/{normalized_repository}.git")
+                ),
+            )
+            .first()
+        )
+        if url_match is not None:
+            return url_match
+
+        slug = normalized_repository.split("/")[-1]
+        slug_matches = (
+            self.db.query(CodeRepo)
+            .filter(
+                CodeRepo.provider == provider,
+                CodeRepo.name == slug,
+            )
+            .all()
+        )
+        if len(slug_matches) == 1:
+            return slug_matches[0]
+        return None
+
+    def get_pull_request_by_repo_and_number(
+        self, code_repo_id: UUID, number: str
+    ) -> PullRequest | None:
+        return (
+            self.db.query(PullRequest)
+            .filter(
+                PullRequest.code_repo_id == code_repo_id,
+                PullRequest.number == number,
+            )
+            .first()
+        )
+
+    def update_pull_request(self, pull_request_id: UUID, **kwargs) -> PullRequest:
+        pull_request = (
+            self.db.query(PullRequest).filter(PullRequest.id == pull_request_id).first()
+        )
+        if pull_request is None:
+            raise ContextEntityReferenceNotFoundError
+        for key, value in kwargs.items():
+            setattr(pull_request, key, value)
+        self.db.add(pull_request)
+        self.db.commit()
+        self.db.refresh(pull_request)
+        return pull_request
+
+    def get_commit_by_repo_and_sha(
+        self, code_repo_id: UUID, sha: str
+    ) -> Commit | None:
+        return (
+            self.db.query(Commit)
+            .filter(
+                Commit.code_repo_id == code_repo_id,
+                Commit.sha == sha,
+            )
+            .first()
+        )
+
+    def update_commit(self, commit_id: UUID, **kwargs) -> Commit:
+        commit = self.db.query(Commit).filter(Commit.id == commit_id).first()
+        if commit is None:
+            raise ContextEntityReferenceNotFoundError
+        for key, value in kwargs.items():
+            setattr(commit, key, value)
+        self.db.add(commit)
+        self.db.commit()
+        self.db.refresh(commit)
+        return commit
 
     def get_system_component_by_name(self, system_component_name: str) -> SystemComponent | None:
         return (

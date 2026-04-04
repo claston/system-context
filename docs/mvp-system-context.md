@@ -63,6 +63,8 @@ Current modules:
 - Sync orchestration endpoints:
   - `POST /sync-runs/{connector_name}`
   - `GET /sync-runs/{sync_run_id}`
+- Normalization endpoint:
+  - `POST /normalize/github/sync-runs/{sync_run_id}`
 - Context aggregation endpoints:
   - `POST /agent/context`
   - `GET /context/system/current-state`
@@ -237,7 +239,9 @@ Response:
 6. [In progress] Introduce first connector implementations (Git/runtime/OpenAPI)
    - Current status: GitHub connector (real API integration) + generic sync pipeline + raw ingestion persistence implemented
    - Remaining scope: runtime/OpenAPI connectors
-7. [Next] Introduce minimal normalization pipeline
+7. [In progress] Introduce minimal normalization pipeline
+   - Current status: GitHub raw-event normalization to canonical `pull_request` and `commit` implemented via `POST /normalize/github/sync-runs/{sync_run_id}`
+   - Remaining scope: extend normalization to additional connectors/entities and add richer traceability
 8. [Next] Add MCP exposure as a thin layer on top of application services
 
 ## 11. Structured Backlog (MVP)
@@ -249,9 +253,9 @@ Response:
   - scope: keep GitHub connector, add runtime connector, add OpenAPI connector
   - outcome: first multi-source context ingestion path
 - `[BL-002]` Start minimal normalization pipeline:
-  - status: pending
-  - scope: normalize raw connector payloads into canonical context entities
-  - outcome: stable model for agent consumption
+  - status: in progress
+  - scope: normalize GitHub raw connector payloads into canonical `pull_request`/`commit` entities with idempotent upsert behavior
+  - outcome: first usable normalized context path for agent consumption
 - `[BL-007]` Make raw-event dedup insertion atomic at DB level:
   - status: pending
   - scope: replace select-then-insert dedup flow with `ON CONFLICT DO NOTHING` semantics for `connector_raw_event_identity_key`

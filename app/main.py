@@ -16,6 +16,7 @@ from app.routers import (
     code_repos_router,
     context_entities_router,
     context_queries_router,
+    normalization_router,
     sync_router,
     system_components_router,
 )
@@ -35,6 +36,7 @@ app.include_router(system_components_router)
 app.include_router(code_repos_router)
 app.include_router(context_entities_router)
 app.include_router(context_queries_router)
+app.include_router(normalization_router)
 app.include_router(sync_router)
 
 
