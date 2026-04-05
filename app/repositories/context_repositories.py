@@ -117,6 +117,31 @@ class GithubNormalizationRepository(Protocol):
     def update_commit(self, commit_id: UUID, **kwargs) -> Commit: ...
 
 
+class RenderRuntimeNormalizationRepository(Protocol):
+    def get_sync_run_by_id(self, sync_run_id: UUID) -> SyncRun | None: ...
+
+    def list_connector_raw_events_by_sync_run(
+        self, sync_run_id: UUID, connector_name: str | None = None
+    ) -> List[ConnectorRawEvent]: ...
+
+    def get_system_component_by_name(
+        self, system_component_name: str
+    ) -> SystemComponent | None: ...
+
+    def get_runtime_snapshot_by_component_environment_and_captured_at(
+        self,
+        system_component_id: UUID,
+        environment: str,
+        captured_at: datetime,
+    ) -> RuntimeSnapshot | None: ...
+
+    def create_runtime_snapshot(self, **kwargs) -> RuntimeSnapshot: ...
+
+    def update_runtime_snapshot(
+        self, runtime_snapshot_id: UUID, **kwargs
+    ) -> RuntimeSnapshot: ...
+
+
 class ContextQueryRepository(Protocol):
     def count_system_components(self) -> int: ...
 
@@ -520,6 +545,51 @@ class SqlAlchemyGithubNormalizationRepository(_SqlAlchemyContextRepositoryBase):
         self.db.commit()
         self.db.refresh(commit)
         return commit
+
+    def get_system_component_by_name(
+        self, system_component_name: str
+    ) -> SystemComponent | None:
+        return (
+            self.db.query(SystemComponent)
+            .filter(SystemComponent.name == system_component_name)
+            .first()
+        )
+
+    def get_runtime_snapshot_by_component_environment_and_captured_at(
+        self,
+        system_component_id: UUID,
+        environment: str,
+        captured_at: datetime,
+    ) -> RuntimeSnapshot | None:
+        return (
+            self.db.query(RuntimeSnapshot)
+            .filter(
+                RuntimeSnapshot.system_component_id == system_component_id,
+                RuntimeSnapshot.environment == environment,
+                RuntimeSnapshot.captured_at == captured_at,
+            )
+            .first()
+        )
+
+    def create_runtime_snapshot(self, **kwargs) -> RuntimeSnapshot:
+        return self._create(RuntimeSnapshot, **kwargs)
+
+    def update_runtime_snapshot(
+        self, runtime_snapshot_id: UUID, **kwargs
+    ) -> RuntimeSnapshot:
+        snapshot = (
+            self.db.query(RuntimeSnapshot)
+            .filter(RuntimeSnapshot.id == runtime_snapshot_id)
+            .first()
+        )
+        if snapshot is None:
+            raise ContextEntityReferenceNotFoundError
+        for key, value in kwargs.items():
+            setattr(snapshot, key, value)
+        self.db.add(snapshot)
+        self.db.commit()
+        self.db.refresh(snapshot)
+        return snapshot
 
 
 class SqlAlchemyContextQueryRepository(_SqlAlchemyContextRepositoryBase):

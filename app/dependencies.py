@@ -10,13 +10,14 @@ from app.application import (
     CodeRepoService,
     ContextService,
     GithubNormalizationService,
+    RenderRuntimeNormalizationService,
     SyncJobDispatcher,
     SyncService,
     SystemComponentService,
     ThreadPoolSyncJobDispatcher,
 )
 from app.application.sync_runtime import SyncRuntimeState
-from app.connectors import GithubConnector
+from app.connectors import GithubConnector, RenderRuntimeConnector
 from app.db import SessionLocal
 from app.repositories import (
     SqlAlchemyCodeRepoRepository,
@@ -115,6 +116,35 @@ def get_github_connector() -> GithubConnector:
     )
 
 
+def _parse_render_service_component_map(value: str) -> dict[str, str]:
+    pairs = [item.strip() for item in value.split(",") if item.strip()]
+    parsed: dict[str, str] = {}
+    for pair in pairs:
+        if ":" not in pair:
+            continue
+        service_id, component_name = pair.split(":", 1)
+        normalized_service_id = service_id.strip()
+        normalized_component_name = component_name.strip()
+        if not normalized_service_id or not normalized_component_name:
+            continue
+        parsed[normalized_service_id] = normalized_component_name
+    return parsed
+
+
+def get_render_runtime_connector() -> RenderRuntimeConnector:
+    service_ids_raw = os.getenv("RENDER_SERVICE_IDS", "")
+    service_ids = [item.strip() for item in service_ids_raw.split(",") if item.strip()]
+    service_component_map_raw = os.getenv("RENDER_SERVICE_COMPONENT_MAP", "")
+    service_component_map = _parse_render_service_component_map(service_component_map_raw)
+    return RenderRuntimeConnector(
+        api_token=os.getenv("RENDER_API_KEY"),
+        service_ids=service_ids,
+        service_component_map=service_component_map,
+        environment=os.getenv("RENDER_RUNTIME_ENVIRONMENT", "staging"),
+        timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
+    )
+
+
 def get_sync_job_dispatcher() -> SyncJobDispatcher:
     return ThreadPoolSyncJobDispatcher(executor=_sync_executor)
 
@@ -125,15 +155,21 @@ def get_sync_runtime_state() -> SyncRuntimeState:
 
 def get_connector_registry(
     github_connector: GithubConnector = Depends(get_github_connector),
+    render_runtime_connector: RenderRuntimeConnector = Depends(
+        get_render_runtime_connector
+    ),
 ):
-    return {"github": github_connector}
+    return {"github": github_connector, "render-runtime": render_runtime_connector}
 
 
 def get_sync_normalizer_factories():
     return {
         "github": lambda sync_repo: GithubNormalizationService(
             SqlAlchemyGithubNormalizationRepository(sync_repo.db)
-        )
+        ),
+        "render-runtime": lambda sync_repo: RenderRuntimeNormalizationService(
+            SqlAlchemyGithubNormalizationRepository(sync_repo.db)
+        ),
     }
 
 
