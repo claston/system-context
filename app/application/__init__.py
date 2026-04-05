@@ -5,6 +5,11 @@ from app.application.github_normalization_service import (
     NormalizationSyncRunNotFoundError,
     UnsupportedNormalizationConnectorError,
 )
+from app.application.render_runtime_normalization_service import (
+    RenderRuntimeNormalizationService,
+    RenderRuntimeNormalizationSyncRunNotFoundError,
+    UnsupportedRenderRuntimeNormalizationConnectorError,
+)
 from app.application.sync_service import (
     SyncExecutionError,
     SyncJobDispatcher,
@@ -25,6 +30,8 @@ __all__ = [
     "ContextService",
     "GithubNormalizationService",
     "NormalizationSyncRunNotFoundError",
+    "RenderRuntimeNormalizationService",
+    "RenderRuntimeNormalizationSyncRunNotFoundError",
     "SyncExecutionError",
     "SyncJobDispatcher",
     "SyncRunNotFoundError",
@@ -33,6 +40,7 @@ __all__ = [
     "ThreadPoolSyncJobDispatcher",
     "UnknownConnectorError",
     "UnsupportedNormalizationConnectorError",
+    "UnsupportedRenderRuntimeNormalizationConnectorError",
     "SystemComponentNotFoundError",
     "SystemComponentService",
 ]
