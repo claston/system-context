@@ -52,11 +52,20 @@ def _assert_mcp_success(response, request_id: str):
     return payload
 
 
+def _build_auth_headers() -> dict[str, str]:
+    token = get_mcp_api_token()
+    if not token:
+        return {}
+    return {"X-MCP-API-Key": token}
+
+
 def run_smoke_checks() -> None:
     client = _build_client()
+    auth_headers = _build_auth_headers()
     try:
         initialize = client.post(
             "/mcp",
+            headers=auth_headers,
             json={
                 "jsonrpc": "2.0",
                 "id": "init-smoke",
@@ -72,6 +81,7 @@ def run_smoke_checks() -> None:
 
         tools_list = client.post(
             "/mcp",
+            headers=auth_headers,
             json={
                 "jsonrpc": "2.0",
                 "id": "tools-smoke",
@@ -92,6 +102,7 @@ def run_smoke_checks() -> None:
 
         current_state = client.post(
             "/mcp",
+            headers=auth_headers,
             json={
                 "jsonrpc": "2.0",
                 "id": "current-state-smoke",
