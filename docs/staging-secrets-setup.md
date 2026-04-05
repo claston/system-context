@@ -33,6 +33,12 @@ This repository supports a dedicated `staging` GitHub Environment for secure pip
 - `RENDER_API_KEY`
 - `RENDER_STAGING_SERVICE_ID`
 
+## Render deploy toggle (recommended while setup is incomplete)
+
+- `RENDER_DEPLOY_ENABLED` (Environment variable in `staging`)
+  - Set to `false` while GHCR image/Render service is not ready.
+  - Set to `true` only when you want `deploy-render-staging.yml` to run.
+
 `deploy-render-staging.yml` uses these secrets to call Render API and trigger a deploy for the staging service.
 
 ## Local env file strategy
