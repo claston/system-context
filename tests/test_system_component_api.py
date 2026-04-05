@@ -117,7 +117,7 @@ def test_release_check_returns_default_release_when_env_not_set(monkeypatch) -> 
     response = client.get("/release-check")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "release": "v0.1.0-local"}
+    assert response.json() == {"status": "ok", "release": "v0.1.1-render-sync"}
 
 
 def test_release_check_returns_app_release_from_env(monkeypatch) -> None:

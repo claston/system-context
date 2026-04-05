@@ -20,7 +20,7 @@ def health():
 def release_check():
     return {
         "status": "ok",
-        "release": os.getenv("APP_RELEASE", "v0.1.0-local"),
+        "release": os.getenv("APP_RELEASE", "v0.1.1-render-sync"),
     }
 
 
