@@ -16,6 +16,7 @@ from app.routers import (
     code_repos_router,
     context_entities_router,
     context_queries_router,
+    integration_target_mappings_router,
     mcp_router,
     normalization_router,
     sync_router,
@@ -35,6 +36,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(system_components_router)
 app.include_router(code_repos_router)
+app.include_router(integration_target_mappings_router)
 app.include_router(context_entities_router)
 app.include_router(context_queries_router)
 app.include_router(mcp_router)

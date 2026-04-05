@@ -5,6 +5,9 @@ from app.application.github_normalization_service import (
     NormalizationSyncRunNotFoundError,
     UnsupportedNormalizationConnectorError,
 )
+from app.application.integration_target_mapping_service import (
+    IntegrationTargetMappingService,
+)
 from app.application.render_runtime_normalization_service import (
     RenderRuntimeNormalizationService,
     RenderRuntimeNormalizationSyncRunNotFoundError,
@@ -29,6 +32,7 @@ __all__ = [
     "CodeRepoService",
     "ContextService",
     "GithubNormalizationService",
+    "IntegrationTargetMappingService",
     "NormalizationSyncRunNotFoundError",
     "RenderRuntimeNormalizationService",
     "RenderRuntimeNormalizationSyncRunNotFoundError",

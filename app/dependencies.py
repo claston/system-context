@@ -10,6 +10,7 @@ from app.application import (
     CodeRepoService,
     ContextService,
     GithubNormalizationService,
+    IntegrationTargetMappingService,
     RenderRuntimeNormalizationService,
     SyncJobDispatcher,
     SyncService,
@@ -20,10 +21,12 @@ from app.application.sync_runtime import SyncRuntimeState
 from app.connectors import GithubConnector, RenderRuntimeConnector
 from app.db import SessionLocal
 from app.repositories import (
+    IntegrationTargetMappingRepository,
     SqlAlchemyCodeRepoRepository,
     SqlAlchemyContextEntityRepository,
     SqlAlchemyContextQueryRepository,
     SqlAlchemyGithubNormalizationRepository,
+    SqlAlchemyIntegrationTargetMappingRepository,
     SqlAlchemySyncRepository,
     SqlAlchemySystemComponentRepository,
     SystemComponentRepository,
@@ -67,10 +70,30 @@ def get_github_normalization_repository(db: Session = Depends(get_db)):
     return SqlAlchemyGithubNormalizationRepository(db)
 
 
+def get_integration_target_mapping_repository(
+    db: Session = Depends(get_db),
+) -> IntegrationTargetMappingRepository:
+    return SqlAlchemyIntegrationTargetMappingRepository(db)
+
+
 def get_system_component_service(
     repository: SystemComponentRepository = Depends(get_system_component_repository),
 ) -> SystemComponentService:
     return SystemComponentService(repository)
+
+
+def get_integration_target_mapping_service(
+    mapping_repository: IntegrationTargetMappingRepository = Depends(
+        get_integration_target_mapping_repository
+    ),
+    system_component_repository: SystemComponentRepository = Depends(
+        get_system_component_repository
+    ),
+) -> IntegrationTargetMappingService:
+    return IntegrationTargetMappingService(
+        mapping_repository=mapping_repository,
+        system_component_repository=system_component_repository,
+    )
 
 
 def get_code_repo_service(
@@ -116,31 +139,25 @@ def get_github_connector() -> GithubConnector:
     )
 
 
-def _parse_render_service_component_map(value: str) -> dict[str, str]:
-    pairs = [item.strip() for item in value.split(",") if item.strip()]
-    parsed: dict[str, str] = {}
-    for pair in pairs:
-        if ":" not in pair:
-            continue
-        service_id, component_name = pair.split(":", 1)
-        normalized_service_id = service_id.strip()
-        normalized_component_name = component_name.strip()
-        if not normalized_service_id or not normalized_component_name:
-            continue
-        parsed[normalized_service_id] = normalized_component_name
-    return parsed
-
-
-def get_render_runtime_connector() -> RenderRuntimeConnector:
-    service_ids_raw = os.getenv("RENDER_SERVICE_IDS", "")
-    service_ids = [item.strip() for item in service_ids_raw.split(",") if item.strip()]
-    service_component_map_raw = os.getenv("RENDER_SERVICE_COMPONENT_MAP", "")
-    service_component_map = _parse_render_service_component_map(service_component_map_raw)
+def get_render_runtime_connector(
+    mapping_repository: IntegrationTargetMappingRepository = Depends(
+        get_integration_target_mapping_repository
+    ),
+) -> RenderRuntimeConnector:
+    environment = os.getenv("RENDER_RUNTIME_ENVIRONMENT", "staging")
+    mappings = mapping_repository.list_active_target_component_mappings(
+        connector_name="render-runtime",
+        environment=environment,
+    )
+    service_component_map = {
+        item.external_target_id: item.system_component_name for item in mappings
+    }
+    service_ids = list(service_component_map.keys())
     return RenderRuntimeConnector(
         api_token=os.getenv("RENDER_API_KEY"),
         service_ids=service_ids,
         service_component_map=service_component_map,
-        environment=os.getenv("RENDER_RUNTIME_ENVIRONMENT", "staging"),
+        environment=environment,
         timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
     )
 

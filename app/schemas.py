@@ -344,3 +344,82 @@ class AgentContextResponse(BaseModel):
     recent_pull_requests: int
     recent_commits: int
     dependencies: list[str]
+
+
+class IntegrationTargetMappingCreate(BaseModel):
+    connector_name: str = Field(min_length=1, max_length=100)
+    external_target_id: str = Field(min_length=1, max_length=255)
+    external_target_name: str | None = Field(default=None, max_length=255)
+    system_component_id: UUID
+    environment: str = Field(default="", max_length=100)
+    metadata: dict | None = None
+    is_active: bool = True
+
+    @field_validator("connector_name", "external_target_id")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        return _normalize_non_empty(value)
+
+    @field_validator("external_target_name")
+    @classmethod
+    def validate_external_target_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, value: str) -> str:
+        return value.strip()
+
+
+class IntegrationTargetMappingUpdate(BaseModel):
+    connector_name: str | None = Field(default=None, min_length=1, max_length=100)
+    external_target_id: str | None = Field(default=None, min_length=1, max_length=255)
+    external_target_name: str | None = Field(default=None, max_length=255)
+    system_component_id: UUID | None = None
+    environment: str | None = Field(default=None, max_length=100)
+    metadata: dict | None = None
+    is_active: bool | None = None
+
+    @field_validator("connector_name", "external_target_id")
+    @classmethod
+    def validate_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty(value)
+
+    @field_validator("external_target_name")
+    @classmethod
+    def validate_external_target_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("environment")
+    @classmethod
+    def validate_environment(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_has_any_field(self):
+        if not self.model_fields_set:
+            raise ValueError("at least one field must be provided")
+        return self
+
+
+class IntegrationTargetMappingResponse(BaseModel):
+    id: UUID
+    connector_name: str
+    external_target_id: str
+    external_target_name: str | None = None
+    system_component_id: UUID
+    environment: str
+    metadata: dict | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
