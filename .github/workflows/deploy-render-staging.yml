@@ -2,13 +2,18 @@ name: Deploy Render Staging
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Deploy Staging
+    types:
+      - completed
 
 permissions:
   contents: read
 
 jobs:
   deploy-render-staging:
-    if: ${{ vars.RENDER_DEPLOY_ENABLED == 'true' }}
+    if: ${{ vars.RENDER_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')) }}
     runs-on: ubuntu-latest
     environment: staging
 
