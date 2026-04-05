@@ -13,6 +13,7 @@ def test_app_has_refactored_route_surface() -> None:
 
     expected_paths = {
         "/health",
+        "/release-check",
         "/system-components",
         "/system-components/{system_component_id}",
         "/system-components/{system_component_id}/code-repos",

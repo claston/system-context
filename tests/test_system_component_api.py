@@ -108,3 +108,23 @@ def test_create_system_component_duplicate_name_returns_409() -> None:
     assert second.status_code == 409
     assert second.json()["detail"] == "System component name already exists"
     app.dependency_overrides.clear()
+
+
+def test_release_check_returns_default_release_when_env_not_set(monkeypatch) -> None:
+    monkeypatch.delenv("APP_RELEASE", raising=False)
+    client = TestClient(app)
+
+    response = client.get("/release-check")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "release": "v0.1.0-local"}
+
+
+def test_release_check_returns_app_release_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("APP_RELEASE", "v2026.04.05-render-test-1")
+    client = TestClient(app)
+
+    response = client.get("/release-check")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "release": "v2026.04.05-render-test-1"}
