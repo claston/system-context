@@ -10,6 +10,7 @@ from app.db import Base
 from app.dependencies import (
     get_db,
     get_github_connector,
+    get_mcp_api_token,
     get_sync_job_dispatcher,
     get_sync_repository_scope,
 )
@@ -85,6 +86,7 @@ def build_test_client() -> TestClient:
         return scope
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_mcp_api_token] = lambda: None
     app.dependency_overrides[get_github_connector] = lambda: FakeGithubConnector()
     app.dependency_overrides[get_sync_job_dispatcher] = (
         lambda: ImmediateSyncJobDispatcher()

@@ -34,6 +34,7 @@ def build_test_client() -> TestClient:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_mcp_api_token] = lambda: None
     return TestClient(app)
 
 
