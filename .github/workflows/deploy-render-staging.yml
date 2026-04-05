@@ -39,3 +39,50 @@ jobs:
             -o "${response_file}"
 
           export RESPONSE_FILE="${response_file}"
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          response_path = os.environ["RESPONSE_FILE"]
+          expected_service_id = os.environ["RENDER_SERVICE_ID"]
+
+          with open(response_path, "r", encoding="utf-8") as response_stream:
+              payload = json.load(response_stream)
+
+          deploy_id = str(payload.get("id") or "").strip()
+          service_id = str(
+              payload.get("serviceId")
+              or payload.get("service", {}).get("id")
+              or ""
+          ).strip()
+          status = str(payload.get("status") or "").strip()
+
+          if not deploy_id:
+              print("::error::Render API response missing deploy id.")
+              print(json.dumps(payload)[:2000])
+              sys.exit(1)
+
+          if service_id and service_id != expected_service_id:
+              print(
+                  "::error::Render API response service id does not match "
+                  "RENDER_STAGING_SERVICE_ID."
+              )
+              print(
+                  f"Expected service id: {expected_service_id}; "
+                  f"response service id: {service_id}"
+              )
+              sys.exit(1)
+
+          if not service_id:
+              print(
+                  "::warning::Render API response did not include service id; "
+                  "continuing because deploy id was returned."
+              )
+
+          print(
+              "::notice::Render deploy request accepted "
+              f"(deploy_id={deploy_id}, "
+              f"service_id={service_id or 'n/a'}, status={status or 'n/a'})."
+          )
+          PY
