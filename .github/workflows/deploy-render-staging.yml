@@ -1,0 +1,38 @@
+name: Deploy Render Staging
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-render-staging:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Trigger deploy on Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_STAGING_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+
+          response_file=$(mktemp)
+
+          curl -fsS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}' \
+            -o "${response_file}"
+
+          export RESPONSE_FILE="${response_file}"
+          python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+payload = json.loads(Path(os.environ["RESPONSE_FILE"]).read_text(encoding="utf-8"))
+print(f"Render deploy triggered: id={payload.get('id')} status={payload.get('status')}")
+PY
