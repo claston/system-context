@@ -19,6 +19,8 @@ def test_app_has_refactored_route_surface() -> None:
         "/system-components/{system_component_id}/code-repos",
         "/code-repos",
         "/code-repos/{code_repo_id}",
+        "/integration-target-mappings",
+        "/integration-target-mappings/{mapping_id}",
         "/pull-requests",
         "/commits",
         "/deployments",

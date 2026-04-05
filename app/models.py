@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db import Base
@@ -209,6 +218,42 @@ class ConnectorSyncState(Base):
     connector_name = Column(String(100), nullable=False)
     target_key = Column(String(255), nullable=False)
     last_cursor = Column(String(100), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class IntegrationTargetMapping(Base):
+    __tablename__ = "integration_target_mapping"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_name",
+            "external_target_id",
+            "environment",
+            name="integration_target_mapping_connector_target_environment_key",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connector_name = Column(String(100), nullable=False)
+    external_target_id = Column(String(255), nullable=False)
+    external_target_name = Column(String(255), nullable=True)
+    system_component_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("system_component.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    environment = Column(String(100), nullable=False, default="")
+    metadata_json = Column("metadata", JSON, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

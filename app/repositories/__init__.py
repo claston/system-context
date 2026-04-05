@@ -11,6 +11,13 @@ from app.repositories.context_repositories import (
     SqlAlchemySyncRepository,
     SyncRepository,
 )
+from app.repositories.integration_target_mapping_repository import (
+    ConnectorTargetComponentMapping,
+    DuplicateIntegrationTargetMappingError,
+    IntegrationTargetMappingNotFoundError,
+    IntegrationTargetMappingRepository,
+    SqlAlchemyIntegrationTargetMappingRepository,
+)
 from app.repositories.system_component_repository import (
     CodeRepoRepository,
     DuplicateCodeRepoError,
@@ -29,11 +36,16 @@ __all__ = [
     "DuplicateContextEntityError",
     "DuplicateSystemComponentNameError",
     "GithubNormalizationRepository",
+    "IntegrationTargetMappingRepository",
+    "ConnectorTargetComponentMapping",
+    "DuplicateIntegrationTargetMappingError",
     "RenderRuntimeNormalizationRepository",
+    "IntegrationTargetMappingNotFoundError",
     "SqlAlchemyCodeRepoRepository",
     "SqlAlchemyContextEntityRepository",
     "SqlAlchemyContextQueryRepository",
     "SqlAlchemyGithubNormalizationRepository",
+    "SqlAlchemyIntegrationTargetMappingRepository",
     "SqlAlchemySyncRepository",
     "SqlAlchemySystemComponentRepository",
     "SyncRepository",
