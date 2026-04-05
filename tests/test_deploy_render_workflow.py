@@ -19,3 +19,5 @@ def test_render_staging_workflow_uses_render_secrets() -> None:
     assert "${{ secrets.RENDER_STAGING_SERVICE_ID }}" in content
     assert "Skipping Render deploy because RENDER_API_KEY or RENDER_STAGING_SERVICE_ID is not configured." in content
     assert "curl -fsS -X POST" in content
+    assert "Render API response missing deploy id." in content
+    assert "Render deploy request accepted" in content
