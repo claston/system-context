@@ -1,3 +1,4 @@
+import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,14 @@ router = APIRouter()
 @router.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@router.get("/release-check")
+def release_check():
+    return {
+        "status": "ok",
+        "release": os.getenv("APP_RELEASE", "v0.1.0-local"),
+    }
 
 
 @router.post("/system-components", response_model=SystemComponentResponse)
