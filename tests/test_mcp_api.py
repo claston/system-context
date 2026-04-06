@@ -424,8 +424,11 @@ def test_mcp_tools_call_errors_analyze_returns_json_payload() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    result_json = payload["result"]["content"][0]["json"]
-    assert result_json["system_component"] == "micro-cardservice"
-    assert result_json["error_event_count"] == 2
-    assert result_json["top_issues"][0]["severity"] == "high"
+    assert payload["result"]["content"][0]["type"] == "text"
+    content_as_json = json.loads(payload["result"]["content"][0]["text"])
+    assert content_as_json["system_component"] == "micro-cardservice"
+    assert content_as_json["error_event_count"] == 2
+    assert content_as_json["top_issues"][0]["severity"] == "high"
+    assert payload["result"]["structuredContent"]["system_component"] == "micro-cardservice"
+    assert payload["result"]["structuredContent"]["error_event_count"] == 2
     app.dependency_overrides.clear()
