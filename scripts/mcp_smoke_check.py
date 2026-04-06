@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -50,6 +51,20 @@ def _assert_mcp_success(response, request_id: str):
     assert payload["id"] == request_id
     assert "error" not in payload, payload
     return payload
+
+
+def _read_tool_payload(result: dict) -> dict:
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict):
+        return structured
+
+    content = result.get("content") or []
+    if content and isinstance(content[0], dict):
+        text = content[0].get("text")
+        if isinstance(text, str) and text.strip():
+            return json.loads(text)
+
+    raise AssertionError("MCP tool result did not include structured JSON payload")
 
 
 def _build_auth_headers() -> dict[str, str]:
@@ -116,12 +131,8 @@ def run_smoke_checks() -> None:
         current_state_payload = _assert_mcp_success(
             current_state, "current-state-smoke"
         )
-        assert (
-            current_state_payload["result"]["content"][0]["json"][
-                "system_component_count"
-            ]
-            == 1
-        )
+        current_state_json = _read_tool_payload(current_state_payload["result"])
+        assert current_state_json["system_component_count"] == 1
 
         app.dependency_overrides[get_mcp_api_token] = lambda: "top-secret"
         unauthorized = client.post(

@@ -143,6 +143,10 @@ class RenderRuntimeNormalizationRepository(Protocol):
 
 
 class ContextQueryRepository(Protocol):
+    def list_system_component_names(self) -> List[str]: ...
+
+    def list_known_environments(self) -> List[str]: ...
+
     def count_system_components(self) -> int: ...
 
     def count_code_repos(self) -> int: ...
@@ -593,6 +597,24 @@ class SqlAlchemyGithubNormalizationRepository(_SqlAlchemyContextRepositoryBase):
 
 
 class SqlAlchemyContextQueryRepository(_SqlAlchemyContextRepositoryBase):
+    def list_system_component_names(self) -> List[str]:
+        rows = (
+            self.db.query(SystemComponent.name)
+            .order_by(SystemComponent.name.asc())
+            .all()
+        )
+        return [name for (name,) in rows if name]
+
+    def list_known_environments(self) -> List[str]:
+        deployment_rows = self.db.query(Deployment.environment).distinct().all()
+        runtime_rows = self.db.query(RuntimeSnapshot.environment).distinct().all()
+        known = {
+            value.strip()
+            for (value,) in deployment_rows + runtime_rows
+            if isinstance(value, str) and value.strip()
+        }
+        return sorted(known)
+
     def count_system_components(self) -> int:
         return self.db.query(SystemComponent).count()
 
