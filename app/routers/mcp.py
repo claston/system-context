@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 from app.application import ContextService, SystemComponentNotFoundError
 from app.dependencies import (
@@ -264,6 +265,12 @@ def handle_mcp_request(
             return _jsonrpc_error(request_id, -32602, "Invalid params", {"detail": str(exc)})
         except FuturesTimeoutError:
             return _jsonrpc_error(request_id, -32008, "Tool execution timeout")
+        except OperationalError:
+            return _jsonrpc_error(
+                request_id,
+                -32010,
+                "Database temporarily unavailable",
+            )
         except SystemComponentNotFoundError:
             return _jsonrpc_error(request_id, -32004, "System component not found")
 
