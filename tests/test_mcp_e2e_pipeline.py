@@ -159,7 +159,7 @@ def test_e2e_sync_normalize_and_mcp_tool_call() -> None:
     mcp_payload = mcp_call.json()
     assert "error" not in mcp_payload
 
-    context_payload = mcp_payload["result"]["content"][0]["json"]
+    context_payload = mcp_payload["result"]["structuredContent"]
     assert context_payload["system_component"] == "payment-api"
     assert context_payload["recent_pull_requests"] == 1
     assert context_payload["recent_commits"] == 1

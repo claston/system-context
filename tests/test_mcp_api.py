@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
@@ -88,6 +90,50 @@ def test_mcp_tools_list_returns_core_context_tools() -> None:
     app.dependency_overrides.clear()
 
 
+def test_mcp_resources_list_returns_discovery_resources() -> None:
+    client = build_test_client()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "resources-1",
+            "method": "resources/list",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    resources = payload["result"]["resources"]
+    uris = [item["uri"] for item in resources]
+    assert "context://system/components" in uris
+    assert "context://system/environments" in uris
+    app.dependency_overrides.clear()
+
+
+def test_mcp_resource_templates_list_returns_component_template() -> None:
+    client = build_test_client()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "resource-templates-1",
+            "method": "resources/templates/list",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    template_uris = [
+        item["uriTemplate"] for item in payload["result"]["resourceTemplates"]
+    ]
+    assert "context://system/component/{name}" in template_uris
+    app.dependency_overrides.clear()
+
+
 def test_mcp_initialized_notification_without_id_is_accepted() -> None:
     client = build_test_client()
 
@@ -150,9 +196,36 @@ def test_mcp_tools_call_current_state_returns_json_payload() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["result"]["content"][0]["type"] == "json"
-    result_json = payload["result"]["content"][0]["json"]
-    assert result_json["system_component_count"] == 1
+    assert payload["result"]["content"][0]["type"] == "text"
+    content_as_json = json.loads(payload["result"]["content"][0]["text"])
+    assert content_as_json["system_component_count"] == 1
+    assert payload["result"]["structuredContent"]["system_component_count"] == 1
+    app.dependency_overrides.clear()
+
+
+def test_mcp_resources_read_component_list_returns_json_text() -> None:
+    client = build_test_client()
+    create_component = client.post(
+        "/system-components",
+        json={"name": "micro-cardservice", "description": "card"},
+    )
+    assert create_component.status_code == 200
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "resources-read-1",
+            "method": "resources/read",
+            "params": {"uri": "context://system/components"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["contents"][0]["mimeType"] == "application/json"
+    data = json.loads(payload["result"]["contents"][0]["text"])
+    assert "micro-cardservice" in data["components"]
     app.dependency_overrides.clear()
 
 

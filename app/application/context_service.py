@@ -6,6 +6,12 @@ class ContextService:
     def __init__(self, context_query_repository: ContextQueryRepository) -> None:
         self.context_query_repository = context_query_repository
 
+    def list_system_component_names(self) -> list[str]:
+        return self.context_query_repository.list_system_component_names()
+
+    def list_known_environments(self) -> list[str]:
+        return self.context_query_repository.list_known_environments()
+
     def get_system_current_state(self):
         return {
             "system_component_count": self.context_query_repository.count_system_components(),

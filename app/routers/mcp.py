@@ -1,3 +1,4 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
@@ -78,6 +79,30 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+RESOURCES: list[dict[str, Any]] = [
+    {
+        "uri": "context://system/components",
+        "name": "System Components",
+        "description": "List valid system component names.",
+        "mimeType": "application/json",
+    },
+    {
+        "uri": "context://system/environments",
+        "name": "Environments",
+        "description": "List known deployment/runtime environments.",
+        "mimeType": "application/json",
+    },
+]
+
+RESOURCE_TEMPLATES: list[dict[str, Any]] = [
+    {
+        "uriTemplate": "context://system/component/{name}",
+        "name": "System Component Context",
+        "description": "Read full context for a specific system component.",
+        "mimeType": "application/json",
+    }
+]
+
 
 def _jsonrpc_success(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -116,11 +141,17 @@ def _read_required_component_name(arguments: dict[str, Any]) -> str:
 
 
 def _tool_result(json_payload: dict[str, Any]) -> dict[str, Any]:
+    text_payload = json.dumps(
+        json_payload,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     return {
+        "structuredContent": json_payload,
         "content": [
             {
-                "type": "json",
-                "json": json_payload,
+                "type": "text",
+                "text": text_payload,
             }
         ]
     }
@@ -140,6 +171,18 @@ def _execute_with_timeout(tool_call, timeout_seconds: float):
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(tool_call)
         return future.result(timeout=max(0.001, timeout_seconds))
+
+
+def _resource_read_result(uri: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "contents": [
+            {
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": json.dumps(payload, separators=(",", ":"), sort_keys=True),
+            }
+        ]
+    }
 
 
 @router.post("/mcp")
@@ -178,7 +221,10 @@ def handle_mcp_request(
             request_id,
             {
                 "protocolVersion": protocol_version,
-                "capabilities": {"tools": {}},
+                "capabilities": {
+                    "tools": {},
+                    "resources": {},
+                },
                 "serverInfo": {
                     "name": "system-context-mcp",
                     "version": "0.1.0",
@@ -193,6 +239,72 @@ def handle_mcp_request(
 
     if method == "tools/list":
         return _jsonrpc_success(request_id, {"tools": TOOLS})
+
+    if method == "resources/list":
+        return _jsonrpc_success(request_id, {"resources": RESOURCES})
+
+    if method == "resources/templates/list":
+        return _jsonrpc_success(
+            request_id,
+            {"resourceTemplates": RESOURCE_TEMPLATES},
+        )
+
+    if method == "resources/read":
+        uri = str(params.get("uri") or "").strip()
+        if not uri:
+            return _jsonrpc_error(
+                request_id,
+                -32602,
+                "Invalid params",
+                {"detail": "parameter 'uri' is required"},
+            )
+
+        try:
+            if uri == "context://system/components":
+                return _jsonrpc_success(
+                    request_id,
+                    _resource_read_result(
+                        uri,
+                        {"components": context_service.list_system_component_names()},
+                    ),
+                )
+
+            if uri == "context://system/environments":
+                return _jsonrpc_success(
+                    request_id,
+                    _resource_read_result(
+                        uri,
+                        {"environments": context_service.list_known_environments()},
+                    ),
+                )
+
+            component_prefix = "context://system/component/"
+            if uri.startswith(component_prefix):
+                component_name = uri.removeprefix(component_prefix).strip()
+                if not component_name:
+                    return _jsonrpc_error(
+                        request_id,
+                        -32602,
+                        "Invalid params",
+                        {"detail": "resource uri must include component name"},
+                    )
+                environment = params.get("environment")
+                if environment is not None:
+                    environment = str(environment).strip() or None
+                return _jsonrpc_success(
+                    request_id,
+                    _resource_read_result(
+                        uri,
+                        context_service.get_system_component_context(
+                            component_name,
+                            environment,
+                        ),
+                    ),
+                )
+        except SystemComponentNotFoundError:
+            return _jsonrpc_error(request_id, -32004, "System component not found")
+
+        return _jsonrpc_error(request_id, -32004, "Resource not found")
 
     if method == "tools/call":
         tool_name = params.get("name")
