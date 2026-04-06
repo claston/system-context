@@ -35,6 +35,7 @@ __all__ = [
     "GithubNormalizationService",
     "IntegrationTargetMappingService",
     "NormalizationSyncRunNotFoundError",
+    "RenderLogsAnalysisService",
     "RenderRuntimeNormalizationService",
     "RenderLogsAnalysisService",
     "RenderRuntimeNormalizationSyncRunNotFoundError",

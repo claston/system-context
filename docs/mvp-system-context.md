@@ -288,6 +288,10 @@ Response:
   - status: pending
   - scope: separate sync ingestion/cursor persistence from generic context CRUD repository
   - outcome: lower cognitive load and easier MVP evolution with clearer ownership boundaries
+- `[BL-011]` Decouple log heuristics from Render-specific connector:
+  - status: pending (post-MVP validation)
+  - scope: introduce provider-agnostic logs source interface + canonical event shape so heuristics can run with any connector
+  - outcome: easier extension to new platforms with minimal changes in analysis logic
 
 ### Later
 
