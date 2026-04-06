@@ -15,6 +15,7 @@ class RenderLogsConnector:
         environment: str = "staging",
         timeout_seconds: float = 10.0,
         client: httpx.Client | None = None,
+        mock_events_by_component: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         self.api_token = api_token.strip() if api_token else None
         self.service_component_map = {
@@ -23,6 +24,7 @@ class RenderLogsConnector:
             if service_id and service_id.strip() and component_name and component_name.strip()
         }
         self.environment = environment.strip() or "staging"
+        self.mock_events_by_component = mock_events_by_component or {}
         self._client = client or httpx.Client(
             base_url="https://api.render.com/v1",
             timeout=timeout_seconds,
@@ -75,6 +77,24 @@ class RenderLogsConnector:
                 return [item for item in payload.get("events", []) if isinstance(item, dict)]
         return []
 
+    def _collect_mock_events(
+        self,
+        *,
+        component_name: str | None,
+        limit: int,
+    ) -> dict[str, Any] | None:
+        name = (component_name or "").strip()
+        if not name:
+            return None
+        configured = self.mock_events_by_component.get(name)
+        if configured is None:
+            return None
+        return {
+            "service_id": f"mock:{name}",
+            "component_name": name,
+            "environment": self.environment,
+            "events": configured[: max(1, limit)],
+        }
     def collect_recent_logs(
         self,
         *,
@@ -91,6 +111,16 @@ class RenderLogsConnector:
                 f"but received '{requested_environment}'."
             )
 
+        mock_result = self._collect_mock_events(
+            component_name=component_name,
+            limit=limit,
+        )
+        if mock_result is not None:
+            return {
+                **mock_result,
+                "start_time": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "end_time": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
         service_id, mapped_component = self._resolve_target(component_name)
         params = {
             "resource": service_id,

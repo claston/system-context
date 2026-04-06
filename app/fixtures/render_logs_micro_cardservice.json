@@ -1,0 +1,29 @@
+{
+  "micro-cardservice": [
+    {
+      "timestamp": "2026-04-06T12:00:01Z",
+      "source": "wallet",
+      "message": "WARN WalletUnauthorizedException apiKey not recognized traceId=5d5cf9a4-bf21-4cbb-a02e-8f5f8a884c3b path=/transfers status=401 errorCode=WALLET_UNAUTHORIZED"
+    },
+    {
+      "timestamp": "2026-04-06T12:01:12Z",
+      "source": "payments",
+      "message": "ERROR PaymentsProviderException timeout when creating pix charge provider=FAKE traceId=7d0dfbf4-94c5-4d7e-a648-e057fc6e24e2 path=/payments/pix/charges status=502 errorCode=PAYMENTS_PROVIDER_ERROR"
+    },
+    {
+      "timestamp": "2026-04-06T12:01:15Z",
+      "source": "payments",
+      "message": "ERROR PaymentsProviderException timeout when creating pix charge provider=FAKE traceId=4e02126d-2237-4e16-ad98-7c20557f9c5f path=/payments/pix/charges status=502 errorCode=PAYMENTS_PROVIDER_ERROR"
+    },
+    {
+      "timestamp": "2026-04-06T12:02:43Z",
+      "source": "payments",
+      "message": "WARN PaymentsIdempotencyConflictException duplicate idempotency key idempotencyKey=charge_918273645 traceId=7f7ff5f8-bd0d-4134-90e9-d57536fe4868 path=/payments/pix/charges status=409 errorCode=PAYMENTS_IDEMPOTENCY_CONFLICT"
+    },
+    {
+      "timestamp": "2026-04-06T12:04:30Z",
+      "source": "common",
+      "message": "ERROR unhandled error traceId=2e0c5052-bf42-4aef-a826-08cf84752f54 instance=/payments/webhooks/psp"
+    }
+  ]
+}

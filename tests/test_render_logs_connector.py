@@ -54,7 +54,6 @@ def test_collect_recent_logs_uses_component_mapping() -> None:
     assert captured_params["startTime"] == "2026-04-06T10:50:00Z"
     assert captured_params["endTime"] == "2026-04-06T11:05:00Z"
 
-
 def test_collect_recent_logs_accepts_direct_service_id() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v1/logs":
@@ -78,6 +77,35 @@ def test_collect_recent_logs_accepts_direct_service_id() -> None:
 
     assert result["service_id"] == "srv-555"
     assert result["events"] == []
+
+
+def test_collect_recent_logs_uses_mock_events_when_enabled() -> None:
+    connector = RenderLogsConnector(
+        environment="staging",
+        mock_events_by_component={
+            "micro-cardservice": [
+                {
+                    "timestamp": "2026-04-06T11:00:00Z",
+                    "message": "ERROR unhandled error traceId=abc instance=/payments/pix/charges",
+                    "source": "payments",
+                }
+            ]
+        },
+    )
+
+    end_time = datetime(2026, 4, 6, 11, 5, 0, tzinfo=timezone.utc)
+    start_time = end_time - timedelta(minutes=15)
+    result = connector.collect_recent_logs(
+        component_name="micro-cardservice",
+        start_time=start_time,
+        end_time=end_time,
+        limit=200,
+    )
+
+    assert result["service_id"] == "mock:micro-cardservice"
+    assert result["component_name"] == "micro-cardservice"
+    assert result["environment"] == "staging"
+    assert len(result["events"]) == 1
 
 
 def test_collect_recent_logs_requires_target_service() -> None:

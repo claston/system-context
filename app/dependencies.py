@@ -1,6 +1,8 @@
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Callable, Iterator
 
 from fastapi import Depends
@@ -162,6 +164,27 @@ def get_render_runtime_connector(
         timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
     )
 
+def _load_mock_render_logs_events() -> dict[str, list[dict]]:
+    fixture_path = os.getenv(
+        "RENDER_LOGS_MOCK_FILE",
+        str(Path("app") / "fixtures" / "render_logs_micro_cardservice.json"),
+    ).strip()
+    if not fixture_path:
+        return {}
+    path = Path(fixture_path)
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, list[dict]] = {}
+    for component_name, events in payload.items():
+        if not isinstance(component_name, str) or not isinstance(events, list):
+            continue
+        normalized_events = [item for item in events if isinstance(item, dict)]
+        if normalized_events:
+            result[component_name] = normalized_events
+    return result
 
 def get_render_logs_connector(
     mapping_repository: IntegrationTargetMappingRepository = Depends(
@@ -176,11 +199,14 @@ def get_render_logs_connector(
     service_component_map = {
         item.external_target_id: item.system_component_name for item in mappings
     }
+    source = os.getenv("RENDER_LOGS_SOURCE", "render").strip().lower()
+    mock_events_by_component = _load_mock_render_logs_events() if source == "mock" else {}
     return RenderLogsConnector(
         api_token=os.getenv("RENDER_API_KEY"),
         service_component_map=service_component_map,
         environment=environment,
         timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
+        mock_events_by_component=mock_events_by_component,
     )
 
 
