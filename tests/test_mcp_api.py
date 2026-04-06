@@ -88,6 +88,44 @@ def test_mcp_tools_list_returns_core_context_tools() -> None:
     app.dependency_overrides.clear()
 
 
+def test_mcp_initialized_notification_without_id_is_accepted() -> None:
+    client = build_test_client()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    app.dependency_overrides.clear()
+
+
+def test_mcp_initialized_with_id_returns_success_payload() -> None:
+    client = build_test_client()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "initialized-1",
+            "method": "notifications/initialized",
+            "params": {},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["jsonrpc"] == "2.0"
+    assert payload["id"] == "initialized-1"
+    assert payload["result"] == {}
+    app.dependency_overrides.clear()
+
+
 def test_mcp_tools_call_current_state_returns_json_payload() -> None:
     client = build_test_client()
 
