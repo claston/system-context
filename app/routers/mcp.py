@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
@@ -185,6 +185,11 @@ def handle_mcp_request(
                 },
             },
         )
+
+    if method == "notifications/initialized":
+        if request_id is None:
+            return Response(status_code=204)
+        return _jsonrpc_success(request_id, {})
 
     if method == "tools/list":
         return _jsonrpc_success(request_id, {"tools": TOOLS})
