@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -235,4 +236,33 @@ def test_mcp_tool_timeout_returns_jsonrpc_error() -> None:
     assert payload["error"]["code"] == -32008
     assert payload["error"]["message"] == "Tool execution timeout"
     assert payload["error"]["data"]["request_id"] == "timeout-1"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_tools_call_returns_jsonrpc_error_for_database_operational_error() -> None:
+    class FailingContextService:
+        def get_system_current_state(self):
+            raise OperationalError("SELECT 1", {}, Exception("connection dropped"))
+
+    client = build_test_client()
+    app.dependency_overrides[get_context_service] = lambda: FailingContextService()
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "db-1",
+            "method": "tools/call",
+            "params": {
+                "name": "context.system.current_state",
+                "arguments": {},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32010
+    assert payload["error"]["message"] == "Database temporarily unavailable"
+    assert payload["error"]["data"]["request_id"] == "db-1"
     app.dependency_overrides.clear()
