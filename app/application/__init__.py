@@ -8,6 +8,7 @@ from app.application.github_normalization_service import (
 from app.application.integration_target_mapping_service import (
     IntegrationTargetMappingService,
 )
+from app.application.render_logs_analysis_service import RenderLogsAnalysisService
 from app.application.render_runtime_normalization_service import (
     RenderRuntimeNormalizationService,
     RenderRuntimeNormalizationSyncRunNotFoundError,
@@ -35,6 +36,7 @@ __all__ = [
     "IntegrationTargetMappingService",
     "NormalizationSyncRunNotFoundError",
     "RenderRuntimeNormalizationService",
+    "RenderLogsAnalysisService",
     "RenderRuntimeNormalizationSyncRunNotFoundError",
     "SyncExecutionError",
     "SyncJobDispatcher",

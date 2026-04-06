@@ -11,6 +11,7 @@ from app.application import (
     ContextService,
     GithubNormalizationService,
     IntegrationTargetMappingService,
+    RenderLogsAnalysisService,
     RenderRuntimeNormalizationService,
     SyncJobDispatcher,
     SyncService,
@@ -18,7 +19,7 @@ from app.application import (
     ThreadPoolSyncJobDispatcher,
 )
 from app.application.sync_runtime import SyncRuntimeState
-from app.connectors import GithubConnector, RenderRuntimeConnector
+from app.connectors import GithubConnector, RenderLogsConnector, RenderRuntimeConnector
 from app.db import SessionLocal
 from app.repositories import (
     IntegrationTargetMappingRepository,
@@ -160,6 +161,33 @@ def get_render_runtime_connector(
         environment=environment,
         timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
     )
+
+
+def get_render_logs_connector(
+    mapping_repository: IntegrationTargetMappingRepository = Depends(
+        get_integration_target_mapping_repository
+    ),
+) -> RenderLogsConnector:
+    environment = os.getenv("RENDER_RUNTIME_ENVIRONMENT", "staging")
+    mappings = mapping_repository.list_active_target_component_mappings(
+        connector_name="render-runtime",
+        environment=environment,
+    )
+    service_component_map = {
+        item.external_target_id: item.system_component_name for item in mappings
+    }
+    return RenderLogsConnector(
+        api_token=os.getenv("RENDER_API_KEY"),
+        service_component_map=service_component_map,
+        environment=environment,
+        timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),
+    )
+
+
+def get_render_logs_analysis_service(
+    render_logs_connector: RenderLogsConnector = Depends(get_render_logs_connector),
+) -> RenderLogsAnalysisService:
+    return RenderLogsAnalysisService(render_logs_connector)
 
 
 def get_sync_job_dispatcher() -> SyncJobDispatcher:

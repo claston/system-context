@@ -11,6 +11,7 @@ from app.dependencies import (
     get_context_service,
     get_mcp_api_token,
     get_mcp_tool_timeout_seconds,
+    get_render_logs_analysis_service,
 )
 from app.main import app, get_db
 
@@ -87,6 +88,7 @@ def test_mcp_tools_list_returns_core_context_tools() -> None:
     assert "context.system_component.changes" in names
     assert "context.system_component.runtime" in names
     assert "context.system_component.dependencies" in names
+    assert "context.system_component.errors_analyze" in names
     app.dependency_overrides.clear()
 
 
@@ -376,4 +378,54 @@ def test_mcp_tools_call_returns_jsonrpc_error_for_database_operational_error() -
     assert payload["error"]["code"] == -32010
     assert payload["error"]["message"] == "Database temporarily unavailable"
     assert payload["error"]["data"]["request_id"] == "db-1"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_tools_call_errors_analyze_returns_json_payload() -> None:
+    class FakeRenderLogsAnalysisService:
+        def analyze_recent_errors(self, component_name, *, minutes, limit, environment=None):
+            return {
+                "system_component": component_name,
+                "service_id": "srv-123",
+                "environment": environment or "staging",
+                "window": {"minutes": minutes},
+                "error_event_count": 2,
+                "top_issues": [
+                    {
+                        "signature": "error timeout calling db",
+                        "count": 2,
+                        "severity": "high",
+                        "sample_message": "ERROR timeout calling db request_id=123",
+                        "affected_sources": ["web"],
+                    }
+                ],
+                "likely_causes": ["Dependency timeout"],
+                "suggested_actions": ["Check DB latency and retry policy."],
+                "sample_log_lines": ["ERROR timeout calling db request_id=123"],
+            }
+
+    client = build_test_client()
+    app.dependency_overrides[get_render_logs_analysis_service] = (
+        lambda: FakeRenderLogsAnalysisService()
+    )
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "errors-1",
+            "method": "tools/call",
+            "params": {
+                "name": "context.system_component.errors_analyze",
+                "arguments": {"name": "micro-cardservice", "minutes": 30, "limit": 200},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    result_json = payload["result"]["content"][0]["json"]
+    assert result_json["system_component"] == "micro-cardservice"
+    assert result_json["error_event_count"] == 2
+    assert result_json["top_issues"][0]["severity"] == "high"
     app.dependency_overrides.clear()

@@ -12,6 +12,7 @@ from app.dependencies import (
     get_context_service,
     get_mcp_api_token,
     get_mcp_tool_timeout_seconds,
+    get_render_logs_analysis_service,
 )
 
 router = APIRouter()
@@ -72,6 +73,21 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "context.system_component.errors_analyze",
+        "description": "Analyze recent Render error logs for a system component.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "environment": {"type": "string"},
+                "minutes": {"type": "integer", "minimum": 1, "maximum": 180},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -189,6 +205,7 @@ def _resource_read_result(uri: str, payload: dict[str, Any]) -> dict[str, Any]:
 def handle_mcp_request(
     payload: dict[str, Any],
     context_service: ContextService = Depends(get_context_service),
+    render_logs_analysis_service=Depends(get_render_logs_analysis_service),
     mcp_api_token: str | None = Depends(get_mcp_api_token),
     mcp_tool_timeout_seconds: float = Depends(get_mcp_tool_timeout_seconds),
     mcp_header_token: str | None = Header(default=None, alias="X-MCP-API-Key"),
@@ -369,6 +386,22 @@ def handle_mcp_request(
                         "system_component": context["system_component"],
                         "dependencies": context["dependencies"],
                     }
+                )
+
+            if tool_name == "context.system_component.errors_analyze":
+                component_name = _read_required_component_name(arguments)
+                environment = arguments.get("environment")
+                if environment is not None:
+                    environment = str(environment).strip() or None
+                minutes = int(arguments.get("minutes") or 30)
+                limit = int(arguments.get("limit") or 300)
+                return _tool_result(
+                    render_logs_analysis_service.analyze_recent_errors(
+                        component_name,
+                        minutes=minutes,
+                        limit=limit,
+                        environment=environment,
+                    )
                 )
 
             return None
