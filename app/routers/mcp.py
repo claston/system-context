@@ -1,7 +1,9 @@
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, Response
 from fastapi.responses import JSONResponse
@@ -11,9 +13,13 @@ from app.application import ContextService, SystemComponentNotFoundError
 from app.dependencies import (
     get_context_service,
     get_mcp_api_token,
+    get_mcp_audit_log_enabled,
+    get_mcp_audit_log_include_result_body,
+    get_mcp_audit_log_max_payload_chars,
     get_mcp_tool_timeout_seconds,
     get_render_logs_analysis_service,
 )
+from app.observability import emit_mcp_audit_event
 
 router = APIRouter()
 
@@ -208,33 +214,71 @@ def handle_mcp_request(
     render_logs_analysis_service=Depends(get_render_logs_analysis_service),
     mcp_api_token: str | None = Depends(get_mcp_api_token),
     mcp_tool_timeout_seconds: float = Depends(get_mcp_tool_timeout_seconds),
+    mcp_audit_log_enabled: bool = Depends(get_mcp_audit_log_enabled),
+    mcp_audit_log_include_result_body: bool = Depends(get_mcp_audit_log_include_result_body),
+    mcp_audit_log_max_payload_chars: int = Depends(get_mcp_audit_log_max_payload_chars),
     mcp_header_token: str | None = Header(default=None, alias="X-MCP-API-Key"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ):
     request_id = payload.get("id")
+    method = payload.get("method")
+    params = payload.get("params")
+    request_started = time.perf_counter()
+    trace_id = str(request_id) if request_id is not None else f"mcp-{uuid4().hex[:12]}"
+
+    def audit(event: str, **kwargs: Any) -> None:
+        if not mcp_audit_log_enabled:
+            return
+        emit_mcp_audit_event(
+            event,
+            trace_id=trace_id,
+            request_id=request_id,
+            method=method if isinstance(method, str) else None,
+            max_payload_chars=mcp_audit_log_max_payload_chars,
+            include_result_body=mcp_audit_log_include_result_body,
+            **kwargs,
+        )
+
+    def complete(outcome: str, error_code: int | None = None, error_message: str | None = None) -> None:
+        audit(
+            "mcp.request.completed",
+            duration_ms=(time.perf_counter() - request_started) * 1000,
+            outcome=outcome,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    audit(
+        "mcp.request.received",
+        params=params,
+        auth={"authorization": authorization, "x-mcp-api-key": mcp_header_token},
+    )
 
     if mcp_api_token is not None:
         bearer_token = _extract_bearer_token(authorization)
         provided_token = mcp_header_token or bearer_token
         if provided_token != mcp_api_token:
+            complete("error", error_code=-32001, error_message="Unauthorized")
             return JSONResponse(
                 status_code=401,
                 content=_jsonrpc_error(request_id, -32001, "Unauthorized"),
             )
 
     if payload.get("jsonrpc") != "2.0":
+        complete("error", error_code=-32600, error_message="Invalid Request")
         return _jsonrpc_error(request_id, -32600, "Invalid Request")
 
-    method = payload.get("method")
     if not isinstance(method, str) or not method.strip():
+        complete("error", error_code=-32600, error_message="Invalid Request")
         return _jsonrpc_error(request_id, -32600, "Invalid Request")
-    params = payload.get("params") or {}
+    params = params or {}
     if not isinstance(params, dict):
+        complete("error", error_code=-32602, error_message="Invalid params")
         return _jsonrpc_error(request_id, -32602, "Invalid params")
 
     if method == "initialize":
         protocol_version = str(params.get("protocolVersion") or "2025-03-26")
-        return _jsonrpc_success(
+        response_payload = _jsonrpc_success(
             request_id,
             {
                 "protocolVersion": protocol_version,
@@ -248,19 +292,26 @@ def handle_mcp_request(
                 },
             },
         )
+        complete("success")
+        return response_payload
 
     if method == "notifications/initialized":
         if request_id is None:
+            complete("success")
             return Response(status_code=204)
+        complete("success")
         return _jsonrpc_success(request_id, {})
 
     if method == "tools/list":
+        complete("success")
         return _jsonrpc_success(request_id, {"tools": TOOLS})
 
     if method == "resources/list":
+        complete("success")
         return _jsonrpc_success(request_id, {"resources": RESOURCES})
 
     if method == "resources/templates/list":
+        complete("success")
         return _jsonrpc_success(
             request_id,
             {"resourceTemplates": RESOURCE_TEMPLATES},
@@ -269,6 +320,7 @@ def handle_mcp_request(
     if method == "resources/read":
         uri = str(params.get("uri") or "").strip()
         if not uri:
+            complete("error", error_code=-32602, error_message="Invalid params")
             return _jsonrpc_error(
                 request_id,
                 -32602,
@@ -278,6 +330,7 @@ def handle_mcp_request(
 
         try:
             if uri == "context://system/components":
+                complete("success")
                 return _jsonrpc_success(
                     request_id,
                     _resource_read_result(
@@ -287,6 +340,7 @@ def handle_mcp_request(
                 )
 
             if uri == "context://system/environments":
+                complete("success")
                 return _jsonrpc_success(
                     request_id,
                     _resource_read_result(
@@ -308,6 +362,7 @@ def handle_mcp_request(
                 environment = params.get("environment")
                 if environment is not None:
                     environment = str(environment).strip() or None
+                complete("success")
                 return _jsonrpc_success(
                     request_id,
                     _resource_read_result(
@@ -319,17 +374,24 @@ def handle_mcp_request(
                     ),
                 )
         except SystemComponentNotFoundError:
+            complete("error", error_code=-32004, error_message="System component not found")
             return _jsonrpc_error(request_id, -32004, "System component not found")
 
+        complete("error", error_code=-32004, error_message="Resource not found")
         return _jsonrpc_error(request_id, -32004, "Resource not found")
 
     if method == "tools/call":
         tool_name = params.get("name")
         arguments = params.get("arguments") or {}
         if not isinstance(tool_name, str) or not tool_name.strip():
+            complete("error", error_code=-32602, error_message="Invalid params")
             return _jsonrpc_error(request_id, -32602, "Invalid params")
         if not isinstance(arguments, dict):
+            complete("error", error_code=-32602, error_message="Invalid params")
             return _jsonrpc_error(request_id, -32602, "Invalid params")
+
+        tool_started = time.perf_counter()
+        audit("mcp.tool.call.start", tool_name=tool_name, arguments=arguments)
 
         def run_tool():
             if tool_name == "context.system.current_state":
@@ -409,19 +471,73 @@ def handle_mcp_request(
         try:
             tool_result = _execute_with_timeout(run_tool, mcp_tool_timeout_seconds)
             if tool_result is None:
+                audit(
+                    "mcp.tool.call.error",
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    duration_ms=(time.perf_counter() - tool_started) * 1000,
+                    error_code=-32601,
+                    error_message="Method not found",
+                )
+                complete("error", error_code=-32601, error_message="Method not found")
                 return _jsonrpc_error(request_id, -32601, "Method not found")
+            audit(
+                "mcp.tool.call.success",
+                tool_name=tool_name,
+                arguments=arguments,
+                result=tool_result,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+            )
+            complete("success")
             return _jsonrpc_success(request_id, tool_result)
         except ValueError as exc:
+            audit(
+                "mcp.tool.call.error",
+                tool_name=tool_name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                error_code=-32602,
+                error_message=str(exc),
+            )
+            complete("error", error_code=-32602, error_message="Invalid params")
             return _jsonrpc_error(request_id, -32602, "Invalid params", {"detail": str(exc)})
         except FuturesTimeoutError:
+            audit(
+                "mcp.tool.call.error",
+                tool_name=tool_name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                error_code=-32008,
+                error_message="Tool execution timeout",
+            )
+            complete("error", error_code=-32008, error_message="Tool execution timeout")
             return _jsonrpc_error(request_id, -32008, "Tool execution timeout")
         except OperationalError:
+            audit(
+                "mcp.tool.call.error",
+                tool_name=tool_name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                error_code=-32010,
+                error_message="Database temporarily unavailable",
+            )
+            complete("error", error_code=-32010, error_message="Database temporarily unavailable")
             return _jsonrpc_error(
                 request_id,
                 -32010,
                 "Database temporarily unavailable",
             )
         except SystemComponentNotFoundError:
+            audit(
+                "mcp.tool.call.error",
+                tool_name=tool_name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                error_code=-32004,
+                error_message="System component not found",
+            )
+            complete("error", error_code=-32004, error_message="System component not found")
             return _jsonrpc_error(request_id, -32004, "System component not found")
 
+    complete("error", error_code=-32601, error_message="Method not found")
     return _jsonrpc_error(request_id, -32601, "Method not found")
