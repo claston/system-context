@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,6 +11,9 @@ from app.db import Base
 from app.dependencies import (
     get_context_service,
     get_mcp_api_token,
+    get_mcp_audit_log_enabled,
+    get_mcp_audit_log_include_result_body,
+    get_mcp_audit_log_max_payload_chars,
     get_mcp_tool_timeout_seconds,
     get_render_logs_analysis_service,
 )
@@ -431,4 +435,75 @@ def test_mcp_tools_call_errors_analyze_returns_json_payload() -> None:
     assert content_as_json["top_issues"][0]["severity"] == "high"
     assert payload["result"]["structuredContent"]["system_component"] == "micro-cardservice"
     assert payload["result"]["structuredContent"]["error_event_count"] == 2
+    app.dependency_overrides.clear()
+
+
+def test_mcp_audit_log_records_request_and_result(caplog) -> None:
+    client = build_test_client()
+    app.dependency_overrides[get_mcp_audit_log_enabled] = lambda: True
+    app.dependency_overrides[get_mcp_audit_log_include_result_body] = lambda: True
+    app.dependency_overrides[get_mcp_audit_log_max_payload_chars] = lambda: 2_000
+
+    with caplog.at_level(logging.INFO, logger="app.mcp.audit"):
+        response = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": "audit-1",
+                "method": "tools/call",
+                "params": {
+                    "name": "context.system.current_state",
+                    "arguments": {},
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "app.mcp.audit"
+    ]
+    event_names = [event["event"] for event in events]
+    assert "mcp.request.received" in event_names
+    assert "mcp.tool.call.start" in event_names
+    assert "mcp.tool.call.success" in event_names
+    assert "mcp.request.completed" in event_names
+
+    success_event = next(event for event in events if event["event"] == "mcp.tool.call.success")
+    assert success_event["request_id"] == "audit-1"
+    assert success_event["tool_name"] == "context.system.current_state"
+    assert "result_preview" in success_event
+    app.dependency_overrides.clear()
+
+
+def test_mcp_audit_log_redacts_auth_and_truncates_payload(caplog) -> None:
+    client = build_test_client()
+    app.dependency_overrides[get_mcp_audit_log_enabled] = lambda: True
+    app.dependency_overrides[get_mcp_audit_log_include_result_body] = lambda: False
+    app.dependency_overrides[get_mcp_audit_log_max_payload_chars] = lambda: 40
+
+    with caplog.at_level(logging.INFO, logger="app.mcp.audit"):
+        response = client.post(
+            "/mcp",
+            headers={"Authorization": "Bearer top-secret-token"},
+            json={
+                "jsonrpc": "2.0",
+                "id": "audit-2",
+                "method": "initialize",
+                "params": {"clientInfo": {"name": "x" * 200}},
+            },
+        )
+
+    assert response.status_code == 200
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "app.mcp.audit"
+    ]
+    received_event = next(event for event in events if event["event"] == "mcp.request.received")
+    assert received_event["auth"]["authorization"] == "***"
+    assert received_event["params_truncated"] is True
+    assert received_event["params_preview"].endswith("...")
+    assert "top-secret-token" not in json.dumps(events)
     app.dependency_overrides.clear()

@@ -39,6 +39,11 @@ _sync_executor = ThreadPoolExecutor(max_workers=2)
 _sync_runtime_state = SyncRuntimeState()
 
 
+def _read_bool_env(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name, str(default)).strip().lower()
+    return raw_value in {"1", "true", "yes", "on"}
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -121,6 +126,18 @@ def get_mcp_api_token() -> str | None:
 
 def get_mcp_tool_timeout_seconds() -> float:
     return float(os.getenv("MCP_TOOL_TIMEOUT_SECONDS", "5"))
+
+
+def get_mcp_audit_log_enabled() -> bool:
+    return _read_bool_env("MCP_AUDIT_LOG_ENABLED", False)
+
+
+def get_mcp_audit_log_include_result_body() -> bool:
+    return _read_bool_env("MCP_AUDIT_LOG_INCLUDE_RESULT_BODY", False)
+
+
+def get_mcp_audit_log_max_payload_chars() -> int:
+    return int(os.getenv("MCP_AUDIT_MAX_PAYLOAD_CHARS", "4000"))
 
 
 def get_github_normalization_service(
