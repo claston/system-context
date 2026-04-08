@@ -17,13 +17,14 @@ FastAPI (HTTP API)
 -> Alembic migrations
 
 Current modules:
-- `app/main.py`: API endpoints
+- `app/main.py`: app composition, lifespan hooks, and router registration
+- `app/routers/*`: HTTP and MCP route handlers
 - `app/models.py`: ORM model(s)
 - `app/schemas.py`: request/response schemas
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-04-03)
+## 3. Implemented Scope (As of 2026-04-08)
 
 ### Implemented now
 
@@ -72,6 +73,11 @@ Current modules:
   - `GET /context/system-component/{name}/changes`
   - `GET /context/system-component/{name}/runtime`
   - `GET /context/system-component/{name}/dependencies`
+- MCP endpoint (`POST /mcp`) with:
+  - tool discovery/invocation (`tools/list`, `tools/call`)
+  - resources support (`resources/list`, `resources/read`, `resources/templates/list`)
+  - optional API token auth (`X-MCP-API-Key` or `Authorization: Bearer`)
+  - per-tool timeout handling and optional audit logging/redaction controls
 - Pydantic schemas for create and response payloads
 - DB session dependency in FastAPI
 - Persistence + Application layers with dependency injection
@@ -86,8 +92,7 @@ Current modules:
 ### Not implemented yet
 
 - Additional connector implementations beyond initial GitHub flow (runtime/OpenAPI/K8s/etc.)
-- Normalization layer
-- MCP/RAG integration
+- Extended normalization beyond current GitHub path (additional connectors/entities + richer traceability)
 
 ## 4. Data Model
 
@@ -243,7 +248,8 @@ Response:
 7. [In progress] Introduce minimal normalization pipeline
    - Current status: GitHub raw-event normalization to canonical `pull_request` and `commit` implemented via `POST /normalize/github/sync-runs/{sync_run_id}`
    - Remaining scope: extend normalization to additional connectors/entities and add richer traceability
-8. [Next] Add MCP exposure as a thin layer on top of application services
+8. [Done] Add MCP exposure as a thin layer on top of application services
+   - Current status: implemented at `POST /mcp` with tools/resources, token auth, timeout handling, and audit events
 
 ## 11. Structured Backlog (MVP)
 
@@ -272,10 +278,6 @@ Response:
 
 ### Next
 
-- `[BL-003]` Add MCP exposure on top of application services:
-  - status: pending
-  - scope: thin MCP layer for current-state and recent-change queries
-  - outcome: direct agent toolability
 - `[BL-004]` Add operational insights to context model:
   - status: pending
   - scope: represent CI/runtime warnings (e.g., deprecations), impact, action, status, and evidence
@@ -308,6 +310,7 @@ Response:
 - `[DONE]` Task 4: harden context-entity validations and error semantics.
 - `[DONE]` Task 5: introduce connector abstraction interface.
 - `[DONE/ONGOING]` Task 6: implement GitHub connector path, async sync hardening, raw event persistence, and generic trigger flow; runtime/OpenAPI connectors still pending.
+- `[DONE]` Task 8: add MCP exposure on top of application services (`POST /mcp`, tools/resources, token auth, timeout/audit guardrails).
 - `[DONE]` Automate environment validation:
   - local command `scripts/validate_environment.py`
   - CI migration/schema check job
@@ -409,10 +412,9 @@ If we follow those PDF specs strictly, the main missing pieces are now platform 
 
 ### Missing platform capabilities (from PDFs)
 
-- connector abstractions and first connector implementations (Git/Kubernetes/OpenAPI/Deploy)
-- normalization layer turning source payloads into internal semantic models
-- sync jobs and freshness tracking
-- MCP server exposing application-layer context tools
+- complete remaining connector implementations beyond GitHub (runtime/OpenAPI/Kubernetes/deploy)
+- extend normalization breadth and traceability beyond current GitHub raw-event path
+- add freshness/scoring and richer quality metadata for agent decision support
 
 Note:
 - Current project scope intentionally focuses on `SystemComponent` first.
