@@ -16,6 +16,13 @@ _SENSITIVE_KEYS = {
 }
 
 
+def _emit_audit_log(message: str) -> None:
+    logger.info(message)
+    if logger.hasHandlers():
+        return
+    logging.getLogger("uvicorn.error").info(message)
+
+
 def _is_sensitive_key(key: str) -> bool:
     normalized_key = key.strip().lower().replace("-", "_")
     return normalized_key in _SENSITIVE_KEYS
@@ -115,6 +122,6 @@ def emit_mcp_audit_event(
     if error_message is not None:
         payload["error_message"] = error_message
 
-    logger.info(
+    _emit_audit_log(
         json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
     )
