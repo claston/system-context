@@ -5,14 +5,18 @@ from typing import Any
 
 logger = logging.getLogger("app.mcp.audit")
 
-_SENSITIVE_KEYS = {
+_RAW_SENSITIVE_KEYS = {
     "authorization",
     "x-mcp-api-key",
+    "x_mcp_api_key",
     "api_key",
     "apikey",
     "token",
     "secret",
     "password",
+}
+_SENSITIVE_KEYS = {
+    key.strip().lower().replace("-", "_") for key in _RAW_SENSITIVE_KEYS
 }
 
 

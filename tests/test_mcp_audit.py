@@ -61,3 +61,17 @@ def test_emit_mcp_audit_event_mirrors_when_handlers_are_available(
 
     assert any(logger_name == "app.mcp.audit" for logger_name, _ in calls)
     assert any(logger_name == "uvicorn.error" for logger_name, _ in calls)
+
+
+def test_sanitize_payload_redacts_x_mcp_api_key_variants() -> None:
+    payload = {
+        "x-mcp-api-key": "secret-dash",
+        "x_mcp_api_key": "secret-underscore",
+        "nested": {"X-MCP-API-KEY": "secret-uppercase"},
+    }
+
+    sanitized = mcp_audit.sanitize_payload(payload)
+
+    assert sanitized["x-mcp-api-key"] == "***"
+    assert sanitized["x_mcp_api_key"] == "***"
+    assert sanitized["nested"]["X-MCP-API-KEY"] == "***"
