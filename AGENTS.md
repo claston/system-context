@@ -43,8 +43,18 @@ Minimum API validation:
 ## Delivery Rules
 
 1. Push the branch after tests pass.
-2. Open a Pull Request with:
-   - concise summary
-   - test evidence
-   - risk/rollback note
-3. Do not merge directly into `main`.
+2. Open a Pull Request using `.github/pull_request_template.md` sections and headings.
+3. PR body sections are mandatory and must be completed with concrete data:
+   - `## Summary`
+   - `## Why`
+   - `## Type of change`
+   - `## How to test`
+   - `## Database / migration impact`
+   - `## Checklist`
+   - `## Risks and rollback`
+4. If a PR is opened outside the template standard, edit the existing PR before finalizing the task.
+5. Prefer opening/editing PRs with:
+   - `gh pr create --body-file .github/pull_request_template.md`
+   - `gh pr edit <number> --body-file <filled_body_file>`
+6. Include command outputs in `How to test` whenever possible (for example `pytest -q`, `ruff check`, smoke scripts).
+7. Do not merge directly into `main`.
