@@ -129,11 +129,11 @@ def get_mcp_tool_timeout_seconds() -> float:
 
 
 def get_mcp_audit_log_enabled() -> bool:
-    return _read_bool_env("MCP_AUDIT_LOG_ENABLED", False)
+    return True
 
 
 def get_mcp_audit_log_include_result_body() -> bool:
-    return _read_bool_env("MCP_AUDIT_LOG_INCLUDE_RESULT_BODY", False)
+    return True
 
 
 def get_mcp_audit_log_max_payload_chars() -> int:
