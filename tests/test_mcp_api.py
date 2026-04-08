@@ -438,6 +438,38 @@ def test_mcp_tools_call_errors_analyze_returns_json_payload() -> None:
     app.dependency_overrides.clear()
 
 
+def test_mcp_tools_call_errors_analyze_returns_controlled_error_on_runtime_failure() -> None:
+    class FailingRenderLogsAnalysisService:
+        def analyze_recent_errors(self, component_name, *, minutes, limit, environment=None):
+            raise RuntimeError("400 for /logs: {\"message\":\"ownerId is required\"}")
+
+    client = build_test_client()
+    app.dependency_overrides[get_render_logs_analysis_service] = (
+        lambda: FailingRenderLogsAnalysisService()
+    )
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "errors-2",
+            "method": "tools/call",
+            "params": {
+                "name": "context.system_component.errors_analyze",
+                "arguments": {"name": "micro-cardservice"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["error"]["code"] == -32009
+    assert payload["error"]["message"] == "Tool execution failed"
+    assert "ownerId is required" in payload["error"]["data"]["detail"]
+    assert payload["error"]["data"]["request_id"] == "errors-2"
+    app.dependency_overrides.clear()
+
+
 def test_mcp_audit_log_records_request_and_result(caplog) -> None:
     client = build_test_client()
     app.dependency_overrides[get_mcp_audit_log_enabled] = lambda: True

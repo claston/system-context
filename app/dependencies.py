@@ -220,6 +220,7 @@ def get_render_logs_connector(
     mock_events_by_component = _load_mock_render_logs_events() if source == "mock" else {}
     return RenderLogsConnector(
         api_token=os.getenv("RENDER_API_KEY"),
+        owner_id=os.getenv("RENDER_OWNER_ID"),
         service_component_map=service_component_map,
         environment=environment,
         timeout_seconds=float(os.getenv("RENDER_TIMEOUT_SECONDS", "10")),

@@ -538,6 +538,22 @@ def handle_mcp_request(
             )
             complete("error", error_code=-32004, error_message="System component not found")
             return _jsonrpc_error(request_id, -32004, "System component not found")
+        except Exception as exc:
+            audit(
+                "mcp.tool.call.error",
+                tool_name=tool_name,
+                arguments=arguments,
+                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                error_code=-32009,
+                error_message=str(exc),
+            )
+            complete("error", error_code=-32009, error_message="Tool execution failed")
+            return _jsonrpc_error(
+                request_id,
+                -32009,
+                "Tool execution failed",
+                {"detail": str(exc)},
+            )
 
     complete("error", error_code=-32601, error_message="Method not found")
     return _jsonrpc_error(request_id, -32601, "Method not found")
