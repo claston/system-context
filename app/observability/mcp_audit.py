@@ -18,8 +18,6 @@ _SENSITIVE_KEYS = {
 
 def _emit_audit_log(message: str) -> None:
     logger.info(message)
-    if logger.hasHandlers():
-        return
     logging.getLogger("uvicorn.error").info(message)
 
 
