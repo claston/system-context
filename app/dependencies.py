@@ -216,6 +216,9 @@ def get_render_logs_connector(
     service_component_map = {
         item.external_target_id: item.system_component_name for item in mappings
     }
+    fallback_resource_id = os.getenv("RENDER_LOGS_RESOURCE_ID", "").strip()
+    if fallback_resource_id and not service_component_map:
+        service_component_map = {fallback_resource_id: fallback_resource_id}
     source = os.getenv("RENDER_LOGS_SOURCE", "render").strip().lower()
     mock_events_by_component = _load_mock_render_logs_events() if source == "mock" else {}
     return RenderLogsConnector(

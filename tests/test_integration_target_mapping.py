@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.dependencies import get_render_runtime_connector
+from app.dependencies import get_render_logs_connector, get_render_runtime_connector
 from app.models import IntegrationTargetMapping, SystemComponent
 from app.repositories import (
     SqlAlchemyIntegrationTargetMappingRepository,
@@ -141,4 +141,28 @@ def test_get_render_runtime_connector_reads_target_mapping_from_repository(
         "srv-123": "micro-cardservice",
         "srv-456": "micro-ledger",
     }
+    assert connector.environment == "staging"
+
+
+def test_get_render_logs_connector_uses_resource_id_env_fallback_when_no_mapping(
+    monkeypatch,
+) -> None:
+    class FakeMappingRepository:
+        def list_active_target_component_mappings(
+            self, connector_name: str, environment: str | None = None
+        ):
+            return []
+
+    mapping_repo = FakeMappingRepository()
+    monkeypatch.setenv("RENDER_RUNTIME_ENVIRONMENT", "staging")
+    monkeypatch.setenv("RENDER_API_KEY", "token")
+    monkeypatch.setenv("RENDER_OWNER_ID", "tea-owner")
+    monkeypatch.setenv("RENDER_LOGS_RESOURCE_ID", "srv-fallback")
+    monkeypatch.setenv("RENDER_TIMEOUT_SECONDS", "7")
+    monkeypatch.delenv("RENDER_LOGS_SOURCE", raising=False)
+
+    connector = get_render_logs_connector(mapping_repository=mapping_repo)
+
+    assert connector.service_component_map == {"srv-fallback": "srv-fallback"}
+    assert connector.owner_id == "tea-owner"
     assert connector.environment == "staging"
