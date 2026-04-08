@@ -11,6 +11,7 @@ class RenderLogsConnector:
         self,
         *,
         api_token: str | None = None,
+        owner_id: str | None = None,
         service_component_map: dict[str, str] | None = None,
         environment: str = "staging",
         timeout_seconds: float = 10.0,
@@ -18,6 +19,7 @@ class RenderLogsConnector:
         mock_events_by_component: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         self.api_token = api_token.strip() if api_token else None
+        self.owner_id = owner_id.strip() if owner_id else None
         self.service_component_map = {
             service_id.strip(): component_name.strip()
             for service_id, component_name in (service_component_map or {}).items()
@@ -128,6 +130,8 @@ class RenderLogsConnector:
             "endTime": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "limit": str(max(1, limit)),
         }
+        if self.owner_id:
+            params["ownerId"] = self.owner_id
         payload = self._request_json("/logs", params=params)
         events = self._extract_events(payload)
         return {

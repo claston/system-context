@@ -79,6 +79,36 @@ def test_collect_recent_logs_accepts_direct_service_id() -> None:
     assert result["events"] == []
 
 
+def test_collect_recent_logs_includes_owner_id_when_configured() -> None:
+    captured_params: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_params
+        if request.url.path == "/v1/logs":
+            captured_params = dict(request.url.params)
+            return httpx.Response(200, json={"logs": []})
+        return httpx.Response(404, json={"message": "not found"})
+
+    connector = RenderLogsConnector(
+        api_token="token",
+        owner_id="owner-abc",
+        environment="staging",
+        service_component_map={"srv-555": "micro-cardservice"},
+        client=build_mock_client(handler),
+    )
+
+    now = datetime(2026, 4, 6, 12, 0, 0, tzinfo=timezone.utc)
+    connector.collect_recent_logs(
+        component_name="micro-cardservice",
+        start_time=now - timedelta(minutes=10),
+        end_time=now,
+        limit=50,
+    )
+
+    assert captured_params["resource"] == "srv-555"
+    assert captured_params["ownerId"] == "owner-abc"
+
+
 def test_collect_recent_logs_uses_mock_events_when_enabled() -> None:
     connector = RenderLogsConnector(
         environment="staging",
