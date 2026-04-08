@@ -33,7 +33,7 @@ def test_emit_mcp_audit_event_mirrors_to_uvicorn_error_when_no_handlers(
     assert any(logger_name == "uvicorn.error" for logger_name, _ in calls)
 
 
-def test_emit_mcp_audit_event_does_not_mirror_when_handlers_are_available(
+def test_emit_mcp_audit_event_mirrors_when_handlers_are_available(
     monkeypatch,
 ) -> None:
     calls: list[tuple[str, str]] = []
@@ -60,4 +60,4 @@ def test_emit_mcp_audit_event_does_not_mirror_when_handlers_are_available(
     )
 
     assert any(logger_name == "app.mcp.audit" for logger_name, _ in calls)
-    assert all(logger_name != "uvicorn.error" for logger_name, _ in calls)
+    assert any(logger_name == "uvicorn.error" for logger_name, _ in calls)
