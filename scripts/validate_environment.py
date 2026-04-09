@@ -27,6 +27,7 @@ DEFAULT_REQUIRED_TABLES = [
     "connector_raw_event",
     "connector_sync_state",
     "integration_target_mapping",
+    "context_chunk",
 ]
 
 

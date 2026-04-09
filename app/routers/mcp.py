@@ -18,6 +18,7 @@ from app.dependencies import (
     get_mcp_audit_log_max_payload_chars,
     get_mcp_tool_timeout_seconds,
     get_render_logs_analysis_service,
+    get_retrieval_service,
 )
 from app.observability import emit_mcp_audit_event
 
@@ -96,6 +97,21 @@ TOOLS: list[dict[str, Any]] = [
                 "limit": {"type": "integer", "minimum": 1, "maximum": 1000},
             },
             "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "context.semantic_search",
+        "description": "Semantic search over component context chunks with local-first embeddings.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "query": {"type": "string"},
+                "environment": {"type": "string"},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["name", "query"],
             "additionalProperties": False,
         },
     },
@@ -213,6 +229,7 @@ def handle_mcp_request(
     payload: dict[str, Any],
     context_service: ContextService = Depends(get_context_service),
     render_logs_analysis_service=Depends(get_render_logs_analysis_service),
+    retrieval_service=Depends(get_retrieval_service),
     mcp_api_token: str | None = Depends(get_mcp_api_token),
     mcp_tool_timeout_seconds: float = Depends(get_mcp_tool_timeout_seconds),
     mcp_audit_log_enabled: bool = Depends(get_mcp_audit_log_enabled),
@@ -472,6 +489,24 @@ def handle_mcp_request(
                         minutes=minutes,
                         limit=limit,
                         environment=environment,
+                    )
+                )
+
+            if tool_name == "context.semantic_search":
+                component_name = _read_required_component_name(arguments)
+                query = str(arguments.get("query") or "").strip()
+                if not query:
+                    raise ValueError("argument 'query' is required")
+                environment = arguments.get("environment")
+                if environment is not None:
+                    environment = str(environment).strip() or None
+                top_k = int(arguments.get("top_k") or 5)
+                return _tool_result(
+                    retrieval_service.semantic_search(
+                        system_component_name=component_name,
+                        query=query,
+                        environment=environment,
+                        top_k=top_k,
                     )
                 )
 

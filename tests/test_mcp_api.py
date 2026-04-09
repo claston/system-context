@@ -94,6 +94,7 @@ def test_mcp_tools_list_returns_core_context_tools() -> None:
     assert "context.system_component.runtime" in names
     assert "context.system_component.dependencies" in names
     assert "context.system_component.errors_analyze" in names
+    assert "context.semantic_search" in names
     app.dependency_overrides.clear()
 
 
@@ -556,6 +557,84 @@ def test_mcp_tools_call_errors_analyze_returns_controlled_error_on_runtime_failu
     assert payload["error"]["message"] == "Tool execution failed"
     assert "ownerId is required" in payload["error"]["data"]["detail"]
     assert payload["error"]["data"]["request_id"] == "errors-2"
+    app.dependency_overrides.clear()
+
+
+def test_mcp_tools_call_semantic_search_returns_ranked_chunks() -> None:
+    client = build_test_client()
+
+    component = client.post(
+        "/system-components",
+        json={"name": "payment-api", "description": "payments"},
+    )
+    assert component.status_code == 200
+    component_id = component.json()["id"]
+
+    code_repo = client.post(
+        "/code-repos",
+        json={
+            "system_component_id": component_id,
+            "provider": "github",
+            "name": "payment-api",
+            "url": "https://github.com/acme/payment-api",
+            "default_branch": "main",
+        },
+    )
+    assert code_repo.status_code == 200
+    code_repo_id = code_repo.json()["id"]
+
+    pull_request = client.post(
+        "/pull-requests",
+        json={
+            "code_repo_id": code_repo_id,
+            "number": "42",
+            "title": "Fix timeout handling in payment retry flow",
+            "status": "open",
+            "author": "ana",
+        },
+    )
+    assert pull_request.status_code == 200
+
+    commit = client.post(
+        "/commits",
+        json={
+            "code_repo_id": code_repo_id,
+            "sha": "abc123def456",
+            "message": "refine timeout backoff and retry jitter for payments",
+            "author": "ana",
+        },
+    )
+    assert commit.status_code == 200
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "semantic-1",
+            "method": "tools/call",
+            "params": {
+                "name": "context.semantic_search",
+                "arguments": {
+                    "name": "payment-api",
+                    "query": "payment timeout retry",
+                    "top_k": 3,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "error" not in payload
+    result_payload = payload["result"]["structuredContent"]
+    assert result_payload["system_component"] == "payment-api"
+    assert result_payload["query"] == "payment timeout retry"
+    assert result_payload["result_count"] >= 1
+    first_hit = result_payload["results"][0]
+    assert first_hit["source_type"] in {"pull_request", "commit"}
+    assert isinstance(first_hit["score"], float)
+    assert first_hit["score"] > 0
+    assert first_hit["text"]
     app.dependency_overrides.clear()
 
 

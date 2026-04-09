@@ -303,3 +303,36 @@ class IntegrationTargetMapping(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class ContextChunk(Base):
+    __tablename__ = "context_chunk"
+    __table_args__ = (
+        UniqueConstraint("chunk_hash", name="context_chunk_chunk_hash_key"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_type = Column(String(100), nullable=False)
+    source_id = Column(String(255), nullable=False)
+    system_component_name = Column(String(255), nullable=False)
+    environment = Column(String(100), nullable=True)
+    chunk_text = Column(String(4000), nullable=False)
+    chunk_hash = Column(String(128), nullable=False)
+    embedding = Column(JSON, nullable=False)
+    metadata_json = Column("metadata", JSON, nullable=True)
+    captured_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
