@@ -24,7 +24,7 @@ Current modules:
 - `app/db.py`: database engine/session config
 - `alembic/versions/*`: schema migration(s)
 
-## 3. Implemented Scope (As of 2026-04-08)
+## 3. Implemented Scope (As of 2026-04-09)
 
 ### Implemented now
 
@@ -243,13 +243,27 @@ Response:
 4. [Done] Harden context-entity validation rules and error semantics
 5. [Done] Introduce connector abstraction interface
 6. [In progress] Introduce first connector implementations (Git/runtime/OpenAPI)
-   - Current status: GitHub connector (real API integration) + generic sync pipeline + raw ingestion persistence implemented
-   - Remaining scope: runtime/OpenAPI connectors
+   - Current status: GitHub connector (real API integration), Render runtime/log paths, generic sync pipeline, and raw ingestion persistence implemented
+   - Remaining scope: OpenAPI connector path and connector breadth hardening
 7. [In progress] Introduce minimal normalization pipeline
-   - Current status: GitHub raw-event normalization to canonical `pull_request` and `commit` implemented via `POST /normalize/github/sync-runs/{sync_run_id}`
+   - Current status: GitHub raw-event normalization to canonical `pull_request` and `commit`, plus Render runtime normalization to `runtime_snapshot` and `operational_issue`
    - Remaining scope: extend normalization to additional connectors/entities and add richer traceability
 8. [Done] Add MCP exposure as a thin layer on top of application services
    - Current status: implemented at `POST /mcp` with tools/resources, token auth, timeout handling, and audit events
+
+### Heuristics-First Direction (MVP)
+
+The MVP value is centered on heuristics over collected data.
+
+Implementation strategy for this phase:
+
+- normalization-time heuristics (persisted signals)
+- query-time heuristics (on-demand risk/context composition)
+- simple-first approach: heuristic class/function local to each normalizer/service (no generic framework yet)
+
+Reference guideline:
+
+- `docs/heuristics-mini-spec.md`
 
 ## 11. Structured Backlog (MVP)
 
@@ -257,7 +271,7 @@ Response:
 
 - `[BL-001]` Complete connector set for MVP:
   - status: in progress
-  - scope: keep GitHub connector, add runtime connector, add OpenAPI connector
+  - scope: keep GitHub and Render paths, add OpenAPI connector
   - outcome: first multi-source context ingestion path
 - `[BL-002]` Start minimal normalization pipeline:
   - status: in progress
@@ -282,10 +296,18 @@ Response:
   - status: pending
   - scope: represent CI/runtime warnings (e.g., deprecations), impact, action, status, and evidence
   - outcome: proactive maintenance signals available to agents
+- `[BL-012]` Extract local heuristic class in runtime normalization:
+  - status: pending
+  - scope: extract restart detection rule into a dedicated local class inside runtime normalizer (for example `UnexpectedRestartHeuristic`) while keeping persistence orchestration in the service
+  - outcome: cleaner and testable heuristic logic with minimal architectural overhead
 - `[BL-006]` Enrich GitHub sync payload with PR/commit context:
   - status: pending
   - scope: persist changed files, labels, review/merge metadata, and commit-to-PR linkage when available
   - outcome: higher-quality context for agents to reason about impact and where to change code
+- `[BL-013]` Add stale-context query heuristic:
+  - status: pending
+  - scope: emit warning when sync freshness exceeds threshold by connector/component
+  - outcome: context consumers can reason about data reliability before acting
 - `[BL-010]` Split context repository by bounded concern:
   - status: pending
   - scope: separate sync ingestion/cursor persistence from generic context CRUD repository
