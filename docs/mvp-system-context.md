@@ -294,6 +294,10 @@ Response:
   - status: pending (post-MVP validation)
   - scope: introduce provider-agnostic logs source interface + canonical event shape so heuristics can run with any connector
   - outcome: easier extension to new platforms with minimal changes in analysis logic
+- `[BL-014]` Deliver RAG technical MVP slice (local-first):
+  - status: pending
+  - scope: add vectorized `context_chunk` storage, local embedding provider, chunk ingestion from normalized entities, and MCP semantic search tool with citations
+  - outcome: stronger demo value and practical retrieval foundation without requiring paid API usage
 
 ### Later
 
