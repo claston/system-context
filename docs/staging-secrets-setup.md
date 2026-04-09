@@ -28,7 +28,7 @@ This repository supports a dedicated `staging` GitHub Environment for secure pip
   - Comma-separated values, for example:
   - `claston/micro-cardservice`
 
-## Render deploy secrets (for deploy-render-staging workflow)
+## Render deploy secrets (for CD | Deploy to Render (Staging))
 
 - `RENDER_API_KEY`
 - `RENDER_STAGING_SERVICE_ID`
@@ -40,6 +40,7 @@ This repository supports a dedicated `staging` GitHub Environment for secure pip
   - Set to `true` only when you want `deploy-render-staging.yml` to run.
 
 `deploy-render-staging.yml` uses these secrets to call Render API and trigger a deploy for the staging service.
+If `RENDER_DEPLOY_ENABLED` is not set to a truthy value (`true`, `1`, `yes`, `on`), the workflow exits with a notice and does not call Render.
 
 ## Local env file strategy
 
@@ -52,7 +53,7 @@ Only one `DATABASE_URL` should be active when running commands.
 
 ## Workflow
 
-`deploy-staging.yml` uses:
+`deploy-staging.yml` (`Staging | Environment Validation`) uses:
 
 - `environment: staging`
 - `${{ secrets.STAGING_DATABASE_URL }}`
