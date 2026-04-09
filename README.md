@@ -192,6 +192,7 @@ venv\Scripts\python.exe scripts/validate_environment.py
 ## Roadmap references
 
 - Product/implementation snapshot: `docs/mvp-system-context.md`
+- Heuristics contract and rule catalog: `docs/heuristics-mini-spec.md`
 - Real test bugs + mitigations: `docs/real-test-bugs-and-mitigations.md`
 
 ---
