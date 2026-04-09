@@ -20,6 +20,11 @@ The container startup command runs migrations first:
 - `alembic upgrade head`
 - `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
 
+Release metadata:
+
+- Image build can set `APP_RELEASE` (used by `GET /release-check`).
+- Runtime can still override `APP_RELEASE` via environment variables if needed.
+
 ## Health check
 
 ```bash

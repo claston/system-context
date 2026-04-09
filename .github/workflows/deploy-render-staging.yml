@@ -1,12 +1,16 @@
-name: Deploy Render Staging
+name: CD | Deploy to Render (Staging)
 
 on:
   workflow_dispatch:
   workflow_run:
     workflows:
-      - Publish GHCR Image
+      - CD | Publish Container (GHCR)
     types:
       - completed
+
+concurrency:
+  group: deploy-render-staging
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -20,10 +24,17 @@ jobs:
     steps:
       - name: Trigger deploy on Render
         env:
+          RENDER_DEPLOY_ENABLED: ${{ vars.RENDER_DEPLOY_ENABLED }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_STAGING_SERVICE_ID }}
         run: |
           set -euo pipefail
+
+          deploy_enabled="$(printf '%s' "${RENDER_DEPLOY_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${deploy_enabled}" != "1" ] && [ "${deploy_enabled}" != "true" ] && [ "${deploy_enabled}" != "yes" ] && [ "${deploy_enabled}" != "on" ]; then
+            echo "::notice::Skipping Render deploy because RENDER_DEPLOY_ENABLED is not true."
+            exit 0
+          fi
 
           if [ -z "${RENDER_API_KEY:-}" ] || [ -z "${RENDER_SERVICE_ID:-}" ]; then
             echo "::notice::Skipping Render deploy because RENDER_API_KEY or RENDER_STAGING_SERVICE_ID is not configured."

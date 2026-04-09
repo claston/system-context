@@ -144,6 +144,13 @@ venv\Scripts\python.exe scripts/validate_environment.py
 - Dockerfile runs `alembic upgrade head` before starting Uvicorn.
 - Staging setup guidance: `docs/staging-secrets-setup.md`
 - Docker run guidance: `docs/docker-run-guide.md`
+- Key GitHub workflows:
+  - `CI | Quality Gates`
+  - `Staging | Environment Validation`
+  - `CD | Publish Container (GHCR)`
+  - `CD | Deploy to Render (Staging)`
+  - `Release | Versioned Publish` (tag trigger `v*.*.*`)
+- Image build sets `APP_RELEASE` so `GET /release-check` can expose release identity.
 
 ---
 

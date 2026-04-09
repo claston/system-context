@@ -11,6 +11,9 @@ def test_staging_workflow_uses_environment_and_secrets() -> None:
     assert workflow_path.exists(), "deploy-staging.yml should exist"
 
     content = workflow_path.read_text(encoding="utf-8")
+    assert "name: Staging | Environment Validation" in content
+    assert "concurrency:" in content
+    assert "staging-validation-${{ github.ref }}" in content
     assert "environment: staging" in content
     assert "${{ secrets.STAGING_DATABASE_URL }}" in content
     assert "${{ secrets.STAGING_MCP_API_TOKEN }}" in content

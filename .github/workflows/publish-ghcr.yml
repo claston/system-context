@@ -1,10 +1,14 @@
-name: Publish GHCR Image
+name: CD | Publish Container (GHCR)
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
+concurrency:
+  group: publish-ghcr-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -15,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,6 +37,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            APP_RELEASE=staging-${{ github.sha }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/system-context:staging
             ghcr.io/${{ github.repository_owner }}/system-context:${{ github.sha }}
