@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -89,6 +90,7 @@ def build_test_client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.mark.e2e
 def test_e2e_render_runtime_sync_populates_component_runtime_context() -> None:
     client = build_test_client()
 

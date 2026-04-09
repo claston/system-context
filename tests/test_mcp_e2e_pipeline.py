@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -95,6 +96,7 @@ def build_test_client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.mark.e2e
 def test_e2e_sync_normalize_and_mcp_tool_call() -> None:
     client = build_test_client()
 
