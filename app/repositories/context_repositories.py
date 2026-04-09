@@ -18,6 +18,7 @@ from app.models import (
     Dependency,
     Deployment,
     Endpoint,
+    OperationalIssue,
     PullRequest,
     RuntimeSnapshot,
     SyncRun,
@@ -61,6 +62,10 @@ class ContextEntityRepository(Protocol):
     def create_dependency(self, **kwargs) -> Dependency: ...
 
     def list_dependencies(self) -> List[Dependency]: ...
+
+    def create_operational_issue(self, **kwargs) -> OperationalIssue: ...
+
+    def list_operational_issues(self) -> List[OperationalIssue]: ...
 
 
 class SyncRepository(Protocol):
@@ -141,6 +146,19 @@ class RenderRuntimeNormalizationRepository(Protocol):
         self, runtime_snapshot_id: UUID, **kwargs
     ) -> RuntimeSnapshot: ...
 
+    def get_open_operational_issue(
+        self,
+        system_component_id: UUID,
+        environment: str,
+        issue_type: str,
+    ) -> OperationalIssue | None: ...
+
+    def create_operational_issue(self, **kwargs) -> OperationalIssue: ...
+
+    def update_operational_issue(
+        self, issue_id: UUID, **kwargs
+    ) -> OperationalIssue: ...
+
 
 class ContextQueryRepository(Protocol):
     def list_system_component_names(self) -> List[str]: ...
@@ -176,6 +194,21 @@ class ContextQueryRepository(Protocol):
     def get_dependencies_for_system_component(
         self, system_component_id: UUID
     ) -> List[Dependency]: ...
+
+    def count_open_operational_issues_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> int: ...
+
+    def count_unexpected_restarts_for_system_component(
+        self,
+        system_component_id: UUID,
+        since: datetime,
+        environment: str | None = None,
+    ) -> int: ...
+
+    def get_latest_unexpected_restart_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> OperationalIssue | None: ...
 
 
 class _SqlAlchemyContextRepositoryBase:
@@ -289,6 +322,12 @@ class SqlAlchemyContextEntityRepository(_SqlAlchemyContextRepositoryBase):
 
     def list_dependencies(self) -> List[Dependency]:
         return self.db.query(Dependency).all()
+
+    def create_operational_issue(self, **kwargs) -> OperationalIssue:
+        return self._create(OperationalIssue, **kwargs)
+
+    def list_operational_issues(self) -> List[OperationalIssue]:
+        return self.db.query(OperationalIssue).all()
 
 
 class SqlAlchemySyncRepository(_SqlAlchemyContextRepositoryBase):
@@ -595,6 +634,38 @@ class SqlAlchemyGithubNormalizationRepository(_SqlAlchemyContextRepositoryBase):
         self.db.refresh(snapshot)
         return snapshot
 
+    def get_open_operational_issue(
+        self,
+        system_component_id: UUID,
+        environment: str,
+        issue_type: str,
+    ) -> OperationalIssue | None:
+        return (
+            self.db.query(OperationalIssue)
+            .filter(
+                OperationalIssue.system_component_id == system_component_id,
+                OperationalIssue.environment == environment,
+                OperationalIssue.issue_type == issue_type,
+                OperationalIssue.status == "open",
+            )
+            .order_by(OperationalIssue.last_seen_at.desc())
+            .first()
+        )
+
+    def create_operational_issue(self, **kwargs) -> OperationalIssue:
+        return self._create(OperationalIssue, **kwargs)
+
+    def update_operational_issue(self, issue_id: UUID, **kwargs) -> OperationalIssue:
+        issue = self.db.query(OperationalIssue).filter(OperationalIssue.id == issue_id).first()
+        if issue is None:
+            raise ContextEntityReferenceNotFoundError
+        for key, value in kwargs.items():
+            setattr(issue, key, value)
+        self.db.add(issue)
+        self.db.commit()
+        self.db.refresh(issue)
+        return issue
+
 
 class SqlAlchemyContextQueryRepository(_SqlAlchemyContextRepositoryBase):
     def list_system_component_names(self) -> List[str]:
@@ -678,3 +749,40 @@ class SqlAlchemyContextQueryRepository(_SqlAlchemyContextRepositoryBase):
             .filter(Dependency.source_system_component_id == system_component_id)
             .all()
         )
+
+    def count_open_operational_issues_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> int:
+        query = self.db.query(OperationalIssue).filter(
+            OperationalIssue.system_component_id == system_component_id,
+            OperationalIssue.status == "open",
+        )
+        if environment:
+            query = query.filter(OperationalIssue.environment == environment)
+        return query.count()
+
+    def count_unexpected_restarts_for_system_component(
+        self,
+        system_component_id: UUID,
+        since: datetime,
+        environment: str | None = None,
+    ) -> int:
+        query = self.db.query(OperationalIssue).filter(
+            OperationalIssue.system_component_id == system_component_id,
+            OperationalIssue.issue_type == "unexpected_restart",
+            OperationalIssue.last_seen_at >= since,
+        )
+        if environment:
+            query = query.filter(OperationalIssue.environment == environment)
+        return query.count()
+
+    def get_latest_unexpected_restart_for_system_component(
+        self, system_component_id: UUID, environment: str | None = None
+    ) -> OperationalIssue | None:
+        query = self.db.query(OperationalIssue).filter(
+            OperationalIssue.system_component_id == system_component_id,
+            OperationalIssue.issue_type == "unexpected_restart",
+        )
+        if environment:
+            query = query.filter(OperationalIssue.environment == environment)
+        return query.order_by(OperationalIssue.last_seen_at.desc()).first()

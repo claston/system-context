@@ -22,6 +22,7 @@ DEFAULT_REQUIRED_TABLES = [
     "api_contract",
     "endpoint",
     "dependency",
+    "operational_issue",
     "sync_run",
     "connector_raw_event",
     "connector_sync_state",

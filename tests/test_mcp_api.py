@@ -209,6 +209,50 @@ def test_mcp_tools_call_current_state_returns_json_payload() -> None:
     app.dependency_overrides.clear()
 
 
+def test_mcp_tools_call_runtime_includes_operational_problem_signals() -> None:
+    client = build_test_client()
+    component = client.post(
+        "/system-components",
+        json={"name": "payment-api", "description": "payments"},
+    )
+    assert component.status_code == 200
+    component_id = component.json()["id"]
+
+    runtime = client.post(
+        "/runtime-snapshots",
+        json={
+            "system_component_id": component_id,
+            "environment": "staging",
+            "health_status": "live",
+            "pod_count": 2,
+        },
+    )
+    assert runtime.status_code == 200
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": "runtime-1",
+            "method": "tools/call",
+            "params": {
+                "name": "context.system_component.runtime",
+                "arguments": {"name": "payment-api", "environment": "staging"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    runtime_payload = payload["result"]["structuredContent"]
+    assert runtime_payload["system_component"] == "payment-api"
+    assert runtime_payload["app_up"] is True
+    assert runtime_payload["open_operational_issues"] == 0
+    assert runtime_payload["unexpected_restarts_last_24h"] == 0
+    assert runtime_payload["last_unexpected_restart_at"] is None
+    app.dependency_overrides.clear()
+
+
 def test_mcp_resources_read_component_list_returns_json_text() -> None:
     client = build_test_client()
     create_component = client.post(

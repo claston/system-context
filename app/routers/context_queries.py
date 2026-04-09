@@ -55,6 +55,10 @@ def get_system_component_runtime(
             "environment": context["environment"],
             "latest_runtime_health": context["latest_runtime_health"],
             "latest_deployment_version": context["latest_deployment_version"],
+            "app_up": context["app_up"],
+            "open_operational_issues": context["open_operational_issues"],
+            "unexpected_restarts_last_24h": context["unexpected_restarts_last_24h"],
+            "last_unexpected_restart_at": context["last_unexpected_restart_at"],
         }
     except SystemComponentNotFoundError:
         raise HTTPException(status_code=404, detail="System component not found")

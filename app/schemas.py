@@ -341,9 +341,13 @@ class AgentContextResponse(BaseModel):
     environment: str | None = None
     latest_deployment_version: str | None = None
     latest_runtime_health: str | None = None
+    app_up: bool = False
     recent_pull_requests: int
     recent_commits: int
     dependencies: list[str]
+    open_operational_issues: int = 0
+    unexpected_restarts_last_24h: int = 0
+    last_unexpected_restart_at: datetime | None = None
 
 
 class IntegrationTargetMappingCreate(BaseModel):
