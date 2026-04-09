@@ -253,12 +253,15 @@ Response:
 
 ### Heuristics-First Direction (MVP)
 
-The MVP value is centered on heuristics over collected data, split into:
+The MVP value is centered on heuristics over collected data.
+
+Implementation strategy for this phase:
 
 - normalization-time heuristics (persisted signals)
 - query-time heuristics (on-demand risk/context composition)
+- simple-first approach: heuristic class/function local to each normalizer/service (no generic framework yet)
 
-Reference contract and initial rule catalog:
+Reference guideline:
 
 - `docs/heuristics-mini-spec.md`
 
@@ -293,10 +296,10 @@ Reference contract and initial rule catalog:
   - status: pending
   - scope: represent CI/runtime warnings (e.g., deprecations), impact, action, status, and evidence
   - outcome: proactive maintenance signals available to agents
-- `[BL-012]` Standardize heuristic output contract in persistence and responses:
+- `[BL-012]` Extract local heuristic class in runtime normalization:
   - status: pending
-  - scope: include `heuristic_id`, `heuristic_version`, `severity`, `impact`, and `recommended_action` in emitted signals (using `evidence_payload` until dedicated columns are introduced)
-  - outcome: consistent heuristic semantics across API/MCP tools
+  - scope: extract restart detection rule into a dedicated local class inside runtime normalizer (for example `UnexpectedRestartHeuristic`) while keeping persistence orchestration in the service
+  - outcome: cleaner and testable heuristic logic with minimal architectural overhead
 - `[BL-006]` Enrich GitHub sync payload with PR/commit context:
   - status: pending
   - scope: persist changed files, labels, review/merge metadata, and commit-to-PR linkage when available
