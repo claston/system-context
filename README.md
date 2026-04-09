@@ -6,8 +6,9 @@
 [![Alembic](https://img.shields.io/badge/Alembic-Migrations-4B5563)](#)
 [![MCP](https://img.shields.io/badge/MCP-JSON--RPC-111827)](#)
 
-Context platform for agents and LLM workflows.  
-This service ingests operational/software context, normalizes key signals, and exposes them through HTTP and MCP-compatible interfaces.
+LLM-first system context platform that ingests, normalizes, and exposes runtime and code metadata via HTTP and MCP.
+
+This service keeps context structured for automation and agent workflows: collect raw events from connectors, normalize them into meaningful entities, and serve compact context through APIs.
 
 ---
 
@@ -32,6 +33,32 @@ The goal is to keep context structured, queryable, and automation-friendly.
 - Normalization flow for connector raw events
 - MCP endpoint (`POST /mcp`) with tools/resources for agent consumption
 - Optional MCP audit logging with redaction controls
+
+---
+
+## Why normalization matters
+
+- Connector collects raw source data.
+- Normalizer assigns domain meaning and links entities.
+- API/MCP delivers compact context that agents can reason about quickly.
+
+---
+
+## Delivery status
+
+### Available now
+
+- Connectors for GitHub and Render runtime/log paths
+- Generic sync pipeline with raw event ingestion
+- Normalization for GitHub flows and Render runtime path
+- Context query APIs and MCP tools/resources
+- CI/CD workflows for quality gates, staging validation, GHCR publish, and release pipeline
+
+### Planned next
+
+- Additional connector coverage beyond the current GitHub/Render scope
+- Broader normalization and traceability across connectors
+- Expanded freshness/scoring signals for agent decision quality
 
 ---
 
@@ -111,6 +138,12 @@ API docs: `http://localhost:8000/docs`
 Primary endpoint:
 
 - `POST /mcp`
+
+Example agent prompts:
+
+- "What changed recently in `payment-api`?"
+- "Is this rollout blocked by recent runtime errors in `micro-cardservice`?"
+- "What dependencies matter most for this component before deploy?"
 
 Useful scripts:
 
