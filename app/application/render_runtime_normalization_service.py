@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +16,8 @@ class UnsupportedRenderRuntimeNormalizationConnectorError(Exception):
 
 
 class RenderRuntimeNormalizationService:
+    _DEPLOY_RESTART_GRACE_WINDOW = timedelta(minutes=10)
+
     def __init__(
         self, normalization_repository: RenderRuntimeNormalizationRepository
     ) -> None:
@@ -45,6 +47,9 @@ class RenderRuntimeNormalizationService:
             "raw_events_read": len(raw_events),
             "runtime_snapshots_created": 0,
             "runtime_snapshots_updated": 0,
+            "operational_issues_opened": 0,
+            "operational_issues_updated": 0,
+            "operational_issues_skipped_deploy_related": 0,
             "skipped": 0,
             "errors": [],
         }
@@ -105,20 +110,156 @@ class RenderRuntimeNormalizationService:
             if existing_snapshot is None:
                 self.normalization_repository.create_runtime_snapshot(**data)
                 summary["runtime_snapshots_created"] += 1
-                continue
+            else:
+                runtime_snapshot_id = self._get_value(existing_snapshot, "id")
+                self.normalization_repository.update_runtime_snapshot(
+                    runtime_snapshot_id,
+                    **data,
+                )
+                summary["runtime_snapshots_updated"] += 1
 
-            runtime_snapshot_id = self._get_value(existing_snapshot, "id")
-            self.normalization_repository.update_runtime_snapshot(
-                runtime_snapshot_id,
-                **data,
+            issue_action = self._upsert_unexpected_restart_issue(
+                system_component_id=data["system_component_id"],
+                environment=environment,
+                payload=payload,
             )
-            summary["runtime_snapshots_updated"] += 1
+            if issue_action == "opened":
+                summary["operational_issues_opened"] += 1
+            elif issue_action == "updated":
+                summary["operational_issues_updated"] += 1
+            elif issue_action == "deploy_related":
+                summary["operational_issues_skipped_deploy_related"] += 1
 
         return summary
+
+    def _upsert_unexpected_restart_issue(
+        self,
+        *,
+        system_component_id: UUID,
+        environment: str,
+        payload: dict[str, Any],
+    ) -> str | None:
+        last_deploy_at = self._parse_iso_datetime(payload.get("last_deploy_at"))
+        restart_candidate = self._select_unexpected_restart_candidate(
+            payload.get("restart_candidates"),
+            last_deploy_at=last_deploy_at,
+        )
+        if restart_candidate is None:
+            if self._has_deploy_related_restart_candidate(
+                payload.get("restart_candidates"),
+                last_deploy_at=last_deploy_at,
+            ):
+                return "deploy_related"
+            return None
+
+        occurred_at = restart_candidate["occurred_at"]
+        existing = self.normalization_repository.get_open_operational_issue(
+            system_component_id=system_component_id,
+            environment=environment,
+            issue_type="unexpected_restart",
+        )
+        evidence_source = restart_candidate["source"]
+        evidence_payload = {
+            "event_type": restart_candidate["event_type"],
+            "occurred_at": occurred_at.isoformat(),
+        }
+        confidence = self._resolve_confidence(evidence_source)
+        if existing is None:
+            self.normalization_repository.create_operational_issue(
+                system_component_id=system_component_id,
+                environment=environment,
+                issue_type="unexpected_restart",
+                status="open",
+                first_seen_at=occurred_at,
+                last_seen_at=occurred_at,
+                evidence_source=evidence_source,
+                evidence_payload=evidence_payload,
+                confidence=confidence,
+            )
+            return "opened"
+
+        existing_last_seen = self._parse_iso_datetime(self._get_value(existing, "last_seen_at"))
+        if existing_last_seen is not None and existing_last_seen >= occurred_at:
+            return None
+        self.normalization_repository.update_operational_issue(
+            self._get_value(existing, "id"),
+            last_seen_at=occurred_at,
+            evidence_source=evidence_source,
+            evidence_payload=evidence_payload,
+            confidence=confidence,
+        )
+        return "updated"
+
+    def _resolve_confidence(self, source: str) -> str:
+        normalized = source.strip().lower()
+        if normalized == "events":
+            return "high"
+        if normalized == "instances":
+            return "medium"
+        return "low"
+
+    def _has_deploy_related_restart_candidate(
+        self, candidates: Any, *, last_deploy_at: datetime | None
+    ) -> bool:
+        parsed_candidates = self._parse_restart_candidates(candidates)
+        return any(
+            self._is_deploy_related_restart(item["occurred_at"], last_deploy_at)
+            for item in parsed_candidates
+        )
+
+    def _select_unexpected_restart_candidate(
+        self,
+        candidates: Any,
+        *,
+        last_deploy_at: datetime | None,
+    ) -> dict[str, Any] | None:
+        parsed_candidates = self._parse_restart_candidates(candidates)
+        for candidate in parsed_candidates:
+            if self._is_deploy_related_restart(
+                candidate["occurred_at"],
+                last_deploy_at,
+            ):
+                continue
+            return candidate
+        return None
+
+    def _is_deploy_related_restart(
+        self, restart_at: datetime, deploy_at: datetime | None
+    ) -> bool:
+        if deploy_at is None:
+            return False
+        window_end = deploy_at + self._DEPLOY_RESTART_GRACE_WINDOW
+        return deploy_at <= restart_at <= window_end
+
+    def _parse_restart_candidates(self, candidates: Any) -> list[dict[str, Any]]:
+        if not isinstance(candidates, list):
+            return []
+        parsed: list[dict[str, Any]] = []
+        for raw_item in candidates:
+            if not isinstance(raw_item, dict):
+                continue
+            occurred_at = self._parse_iso_datetime(raw_item.get("occurred_at"))
+            if occurred_at is None:
+                continue
+            parsed.append(
+                {
+                    "occurred_at": occurred_at,
+                    "source": str(raw_item.get("source") or "unknown").strip()
+                    or "unknown",
+                    "event_type": str(raw_item.get("event_type") or "unknown").strip()
+                    or "unknown",
+                }
+            )
+        parsed.sort(key=lambda item: item["occurred_at"], reverse=True)
+        return parsed
 
     def _parse_iso_datetime(self, value: Any) -> datetime | None:
         if value is None:
             return None
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value
         normalized = str(value).strip()
         if not normalized:
             return None

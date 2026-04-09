@@ -14,6 +14,7 @@ class FakeRenderRuntimeRepository:
         self.raw_events_by_sync_run: dict[UUID, list[dict]] = {}
         self.system_components_by_name: dict[str, dict] = {}
         self.runtime_snapshots: dict[tuple[UUID, str, datetime], dict] = {}
+        self.operational_issues: dict[UUID, dict] = {}
 
     def get_sync_run_by_id(self, sync_run_id: UUID):
         return self.sync_runs.get(sync_run_id)
@@ -57,6 +58,32 @@ class FakeRenderRuntimeRepository:
         current.update(kwargs)
         return current
 
+    def get_open_operational_issue(
+        self,
+        system_component_id: UUID,
+        environment: str,
+        issue_type: str,
+    ):
+        for issue in self.operational_issues.values():
+            if (
+                issue["system_component_id"] == system_component_id
+                and issue["environment"] == environment
+                and issue["issue_type"] == issue_type
+                and issue["status"] == "open"
+            ):
+                return issue
+        return None
+
+    def create_operational_issue(self, **kwargs):
+        issue = {"id": uuid4(), **kwargs}
+        self.operational_issues[issue["id"]] = issue
+        return issue
+
+    def update_operational_issue(self, issue_id: UUID, **kwargs):
+        issue = self.operational_issues[issue_id]
+        issue.update(kwargs)
+        return issue
+
 
 def test_normalize_sync_run_creates_runtime_snapshot() -> None:
     repo = FakeRenderRuntimeRepository()
@@ -91,6 +118,7 @@ def test_normalize_sync_run_creates_runtime_snapshot() -> None:
     assert summary["runtime_snapshots_updated"] == 0
     assert summary["skipped"] == 0
     assert summary["errors"] == []
+    assert summary["operational_issues_opened"] == 0
 
 
 def test_normalize_sync_run_updates_existing_runtime_snapshot() -> None:
@@ -132,6 +160,89 @@ def test_normalize_sync_run_updates_existing_runtime_snapshot() -> None:
     updated = repo.runtime_snapshots[(component_id, "staging", captured_at)]
     assert updated["pod_count"] == 3
     assert updated["health_status"] == "live"
+    assert summary["operational_issues_opened"] == 0
+
+
+def test_normalize_sync_run_creates_unexpected_restart_issue() -> None:
+    repo = FakeRenderRuntimeRepository()
+    service = RenderRuntimeNormalizationService(repo)
+    sync_run_id = uuid4()
+    component_id = uuid4()
+    repo.sync_runs[sync_run_id] = {"id": sync_run_id, "connector_name": "render-runtime"}
+    repo.system_components_by_name["micro-cardservice"] = {
+        "id": component_id,
+        "name": "micro-cardservice",
+    }
+    repo.raw_events_by_sync_run[sync_run_id] = [
+        {
+            "id": uuid4(),
+            "connector_name": "render-runtime",
+            "payload": {
+                "kind": "runtime_snapshot",
+                "system_component_name": "micro-cardservice",
+                "environment": "staging",
+                "captured_at": "2026-04-05T12:00:00Z",
+                "instance_count": 2,
+                "health_status": "live",
+                "image_tag": "staging",
+                "last_deploy_at": "2026-04-05T11:00:00Z",
+                "restart_candidates": [
+                    {
+                        "occurred_at": "2026-04-05T11:45:00Z",
+                        "source": "events",
+                        "event_type": "service_restarted",
+                    }
+                ],
+            },
+        }
+    ]
+
+    summary = service.normalize_sync_run(sync_run_id)
+
+    assert summary["operational_issues_opened"] == 1
+    issue = next(iter(repo.operational_issues.values()))
+    assert issue["issue_type"] == "unexpected_restart"
+    assert issue["status"] == "open"
+    assert issue["environment"] == "staging"
+    assert issue["evidence_source"] == "events"
+
+
+def test_normalize_sync_run_ignores_deploy_related_restart() -> None:
+    repo = FakeRenderRuntimeRepository()
+    service = RenderRuntimeNormalizationService(repo)
+    sync_run_id = uuid4()
+    component_id = uuid4()
+    repo.sync_runs[sync_run_id] = {"id": sync_run_id, "connector_name": "render-runtime"}
+    repo.system_components_by_name["micro-cardservice"] = {"id": component_id}
+    repo.raw_events_by_sync_run[sync_run_id] = [
+        {
+            "id": uuid4(),
+            "connector_name": "render-runtime",
+            "payload": {
+                "kind": "runtime_snapshot",
+                "system_component_name": "micro-cardservice",
+                "environment": "staging",
+                "captured_at": "2026-04-05T12:00:00Z",
+                "instance_count": 2,
+                "health_status": "live",
+                "image_tag": "staging",
+                "last_deploy_at": "2026-04-05T11:40:00Z",
+                "restart_candidates": [
+                    {
+                        "occurred_at": "2026-04-05T11:45:00Z",
+                        "source": "events",
+                        "event_type": "service_restarted",
+                    }
+                ],
+            },
+        }
+    ]
+
+    summary = service.normalize_sync_run(sync_run_id)
+
+    assert summary["operational_issues_opened"] == 0
+    assert summary["operational_issues_skipped_deploy_related"] == 1
+    assert repo.operational_issues == {}
 
 
 def test_normalize_sync_run_raises_for_missing_or_unsupported_sync_run() -> None:

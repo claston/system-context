@@ -128,6 +128,10 @@ def test_entities_and_context_endpoints() -> None:
     context_runtime = client.get("/context/system-component/payment-api/runtime")
     assert context_runtime.status_code == 200
     assert context_runtime.json()["latest_runtime_health"] == "healthy"
+    assert context_runtime.json()["app_up"] is True
+    assert context_runtime.json()["open_operational_issues"] == 0
+    assert context_runtime.json()["unexpected_restarts_last_24h"] == 0
+    assert context_runtime.json()["last_unexpected_restart_at"] is None
 
     context_dependencies = client.get("/context/system-component/payment-api/dependencies")
     assert context_dependencies.status_code == 200

@@ -168,6 +168,44 @@ class Dependency(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class OperationalIssue(Base):
+    __tablename__ = "operational_issue"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    system_component_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("system_component.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    environment = Column(String(100), nullable=False, default="")
+    issue_type = Column(String(100), nullable=False)
+    status = Column(String(50), nullable=False, default="open")
+    first_seen_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    last_seen_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    evidence_source = Column(String(100), nullable=True)
+    evidence_payload = Column(JSON, nullable=True)
+    confidence = Column(String(50), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class SyncRun(Base):
     __tablename__ = "sync_run"
 

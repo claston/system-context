@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,9 @@ from app.repositories import SqlAlchemySyncRepository
 
 class FakeRenderRuntimeConnector:
     def collect(self, request):
+        captured_at = datetime.now(timezone.utc)
+        deploy_at = captured_at - timedelta(hours=2)
+        restart_at = captured_at - timedelta(minutes=30)
         return ConnectorBatch(
             connector_name="render-runtime",
             records_processed=1,
@@ -29,15 +33,23 @@ class FakeRenderRuntimeConnector:
                     "kind": "runtime_snapshot",
                     "system_component_name": "micro-cardservice",
                     "environment": "staging",
-                    "captured_at": "2026-04-05T12:00:00Z",
+                    "captured_at": captured_at.isoformat().replace("+00:00", "Z"),
                     "instance_count": 2,
                     "health_status": "live",
                     "image_tag": "staging",
+                    "last_deploy_at": deploy_at.isoformat().replace("+00:00", "Z"),
+                    "restart_candidates": [
+                        {
+                            "occurred_at": restart_at.isoformat().replace("+00:00", "Z"),
+                            "source": "events",
+                            "event_type": "service_restarted",
+                        }
+                    ],
                     "service_id": "srv-123",
                     "source_key": "runtime_snapshot:dep-1",
                 }
             ],
-            latest_cursor_by_target={"srv-123": "2026-04-05T12:00:00+00:00"},
+            latest_cursor_by_target={"srv-123": captured_at.isoformat()},
         )
 
 
@@ -121,5 +133,9 @@ def test_e2e_render_runtime_sync_populates_component_runtime_context() -> None:
     assert payload["system_component"] == "micro-cardservice"
     assert payload["environment"] == "staging"
     assert payload["latest_runtime_health"] == "live"
+    assert payload["app_up"] is True
+    assert payload["open_operational_issues"] == 1
+    assert payload["unexpected_restarts_last_24h"] == 1
+    assert payload["last_unexpected_restart_at"] is not None
 
     app.dependency_overrides.clear()
