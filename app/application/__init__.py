@@ -14,6 +14,10 @@ from app.application.render_runtime_normalization_service import (
     RenderRuntimeNormalizationSyncRunNotFoundError,
     UnsupportedRenderRuntimeNormalizationConnectorError,
 )
+from app.application.retrieval_service import (
+    LocalHashEmbeddingProvider,
+    RetrievalService,
+)
 from app.application.sync_service import (
     SyncExecutionError,
     SyncJobDispatcher,
@@ -36,6 +40,8 @@ __all__ = [
     "IntegrationTargetMappingService",
     "NormalizationSyncRunNotFoundError",
     "RenderLogsAnalysisService",
+    "RetrievalService",
+    "LocalHashEmbeddingProvider",
     "RenderRuntimeNormalizationService",
     "RenderLogsAnalysisService",
     "RenderRuntimeNormalizationSyncRunNotFoundError",

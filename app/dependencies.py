@@ -13,8 +13,10 @@ from app.application import (
     ContextService,
     GithubNormalizationService,
     IntegrationTargetMappingService,
+    LocalHashEmbeddingProvider,
     RenderLogsAnalysisService,
     RenderRuntimeNormalizationService,
+    RetrievalService,
     SyncJobDispatcher,
     SyncService,
     SystemComponentService,
@@ -30,6 +32,7 @@ from app.repositories import (
     SqlAlchemyContextQueryRepository,
     SqlAlchemyGithubNormalizationRepository,
     SqlAlchemyIntegrationTargetMappingRepository,
+    SqlAlchemyRetrievalRepository,
     SqlAlchemySyncRepository,
     SqlAlchemySystemComponentRepository,
     SystemComponentRepository,
@@ -72,6 +75,10 @@ def get_sync_repository(db: Session = Depends(get_db)):
 
 def get_context_query_repository(db: Session = Depends(get_db)):
     return SqlAlchemyContextQueryRepository(db)
+
+
+def get_retrieval_repository(db: Session = Depends(get_db)):
+    return SqlAlchemyRetrievalRepository(db)
 
 
 def get_github_normalization_repository(db: Session = Depends(get_db)):
@@ -117,6 +124,15 @@ def get_context_service(
     context_query_repository=Depends(get_context_query_repository),
 ) -> ContextService:
     return ContextService(context_query_repository)
+
+
+def get_retrieval_service(
+    retrieval_repository=Depends(get_retrieval_repository),
+) -> RetrievalService:
+    return RetrievalService(
+        retrieval_repository=retrieval_repository,
+        embedding_provider=LocalHashEmbeddingProvider(),
+    )
 
 
 def get_mcp_api_token() -> str | None:

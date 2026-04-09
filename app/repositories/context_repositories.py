@@ -1,7 +1,7 @@
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import List, Protocol
+from typing import Any, List, Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -15,6 +15,7 @@ from app.models import (
     Commit,
     ConnectorRawEvent,
     ConnectorSyncState,
+    ContextChunk,
     Dependency,
     Deployment,
     Endpoint,
@@ -209,6 +210,28 @@ class ContextQueryRepository(Protocol):
     def get_latest_unexpected_restart_for_system_component(
         self, system_component_id: UUID, environment: str | None = None
     ) -> OperationalIssue | None: ...
+
+
+class RetrievalRepository(Protocol):
+    def upsert_context_chunk(self, **kwargs) -> ContextChunk: ...
+
+    def list_context_chunks(
+        self,
+        system_component_name: str,
+        environment: str | None = None,
+    ) -> List[ContextChunk]: ...
+
+    def list_pull_request_chunks_source(
+        self, system_component_name: str
+    ) -> List[dict[str, Any]]: ...
+
+    def list_commit_chunks_source(self, system_component_name: str) -> List[dict[str, Any]]: ...
+
+    def list_operational_issue_chunks_source(
+        self,
+        system_component_name: str,
+        environment: str | None = None,
+    ) -> List[dict[str, Any]]: ...
 
 
 class _SqlAlchemyContextRepositoryBase:
@@ -786,3 +809,128 @@ class SqlAlchemyContextQueryRepository(_SqlAlchemyContextRepositoryBase):
         if environment:
             query = query.filter(OperationalIssue.environment == environment)
         return query.order_by(OperationalIssue.last_seen_at.desc()).first()
+
+
+class SqlAlchemyRetrievalRepository(_SqlAlchemyContextRepositoryBase):
+    def upsert_context_chunk(self, **kwargs) -> ContextChunk:
+        chunk_hash = str(kwargs["chunk_hash"])
+        item = (
+            self.db.query(ContextChunk)
+            .filter(ContextChunk.chunk_hash == chunk_hash)
+            .first()
+        )
+        if item is None:
+            return self._create(ContextChunk, **kwargs)
+        for key, value in kwargs.items():
+            setattr(item, key, value)
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def list_context_chunks(
+        self,
+        system_component_name: str,
+        environment: str | None = None,
+    ) -> List[ContextChunk]:
+        query = self.db.query(ContextChunk).filter(
+            ContextChunk.system_component_name == system_component_name
+        )
+        if environment:
+            query = query.filter(ContextChunk.environment == environment)
+        return query.order_by(ContextChunk.captured_at.desc()).all()
+
+    def list_pull_request_chunks_source(
+        self, system_component_name: str
+    ) -> List[dict[str, Any]]:
+        rows = (
+            self.db.query(PullRequest, CodeRepo, SystemComponent)
+            .join(CodeRepo, PullRequest.code_repo_id == CodeRepo.id)
+            .join(SystemComponent, CodeRepo.system_component_id == SystemComponent.id)
+            .filter(SystemComponent.name == system_component_name)
+            .order_by(PullRequest.updated_at.desc())
+            .all()
+        )
+        result: list[dict[str, Any]] = []
+        for pull_request, code_repo, _component in rows:
+            result.append(
+                {
+                    "source_type": "pull_request",
+                    "source_id": str(pull_request.id),
+                    "text": (
+                        f"PR #{pull_request.number} {pull_request.title}. "
+                        f"status={pull_request.status}. "
+                        f"repo={code_repo.name}."
+                    ),
+                    "captured_at": pull_request.updated_at,
+                    "metadata": {
+                        "repo": code_repo.name,
+                        "number": pull_request.number,
+                        "status": pull_request.status,
+                    },
+                }
+            )
+        return result
+
+    def list_commit_chunks_source(self, system_component_name: str) -> List[dict[str, Any]]:
+        rows = (
+            self.db.query(Commit, CodeRepo, SystemComponent)
+            .join(CodeRepo, Commit.code_repo_id == CodeRepo.id)
+            .join(SystemComponent, CodeRepo.system_component_id == SystemComponent.id)
+            .filter(SystemComponent.name == system_component_name)
+            .order_by(Commit.committed_at.desc())
+            .all()
+        )
+        result: list[dict[str, Any]] = []
+        for commit, code_repo, _component in rows:
+            result.append(
+                {
+                    "source_type": "commit",
+                    "source_id": str(commit.id),
+                    "text": (
+                        f"Commit {commit.sha[:12]} message: {commit.message}. "
+                        f"repo={code_repo.name}."
+                    ),
+                    "captured_at": commit.committed_at,
+                    "metadata": {
+                        "repo": code_repo.name,
+                        "sha": commit.sha,
+                    },
+                }
+            )
+        return result
+
+    def list_operational_issue_chunks_source(
+        self,
+        system_component_name: str,
+        environment: str | None = None,
+    ) -> List[dict[str, Any]]:
+        query = (
+            self.db.query(OperationalIssue, SystemComponent)
+            .join(SystemComponent, OperationalIssue.system_component_id == SystemComponent.id)
+            .filter(SystemComponent.name == system_component_name)
+            .order_by(OperationalIssue.last_seen_at.desc())
+        )
+        if environment:
+            query = query.filter(OperationalIssue.environment == environment)
+        rows = query.all()
+        result: list[dict[str, Any]] = []
+        for issue, _component in rows:
+            result.append(
+                {
+                    "source_type": "operational_issue",
+                    "source_id": str(issue.id),
+                    "text": (
+                        f"Operational issue {issue.issue_type} status={issue.status}. "
+                        f"environment={issue.environment or 'unknown'}."
+                    ),
+                    "captured_at": issue.last_seen_at,
+                    "environment": issue.environment or None,
+                    "metadata": {
+                        "issue_type": issue.issue_type,
+                        "status": issue.status,
+                        "confidence": issue.confidence,
+                    },
+                }
+            )
+        return result
