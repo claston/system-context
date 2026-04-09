@@ -160,6 +160,12 @@ class RenderRuntimeConnector:
             return [payload]
         return []
 
+    def _unwrap_item(self, item: dict[str, Any], nested_key: str) -> dict[str, Any]:
+        nested = item.get(nested_key)
+        if isinstance(nested, dict):
+            return nested
+        return item
+
     def _extract_timestamp(self, item: dict[str, Any]) -> str | None:
         for key in ("timestamp", "createdAt", "occurredAt", "updatedAt"):
             candidate = item.get(key)
@@ -174,7 +180,8 @@ class RenderRuntimeConnector:
         seen: set[tuple[str, str, str]] = set()
 
         events = self._extract_list_items(events_payload)
-        for event in events:
+        for raw_event in events:
+            event = self._unwrap_item(raw_event, "event")
             event_type = str(
                 event.get("type") or event.get("eventType") or event.get("name") or ""
             ).strip()
@@ -202,7 +209,8 @@ class RenderRuntimeConnector:
             candidates.append(item)
 
         instances = self._extract_list_items(instances_payload)
-        for instance in instances:
+        for raw_instance in instances:
+            instance = self._unwrap_item(raw_instance, "instance")
             created_at = self._extract_timestamp(instance)
             if not created_at:
                 continue

@@ -123,6 +123,66 @@ def test_collect_includes_restart_candidates_and_latest_deploy_timestamp() -> No
     assert payload["restart_candidates"][0]["occurred_at"] == "2026-04-05T11:45:00Z"
 
 
+def test_collect_reads_restart_candidates_from_render_event_envelope() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/services/srv-123":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "srv-123",
+                    "name": "micro-cardservice",
+                    "numInstances": 1,
+                },
+            )
+        if request.url.path == "/v1/services/srv-123/deploys":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "dep-1",
+                        "status": "live",
+                        "finishedAt": "2026-04-05T11:00:00Z",
+                    }
+                ],
+            )
+        if request.url.path == "/v1/services/srv-123/events":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "event": {
+                            "id": "evt-1",
+                            "type": "server_restarted",
+                            "timestamp": "2026-04-05T11:55:00Z",
+                            "details": {"triggeredByUser": "usr-1"},
+                        },
+                        "cursor": "cur-1",
+                    }
+                ],
+            )
+        if request.url.path == "/v1/services/srv-123/instances":
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"message": "not found"})
+
+    connector = RenderRuntimeConnector(
+        api_token="token",
+        environment="staging",
+        service_ids=["srv-123"],
+        service_component_map={"srv-123": "micro-cardservice"},
+        client=build_mock_client(handler),
+    )
+
+    batch = connector.collect(
+        ConnectorRunRequest(system_component_name="micro-cardservice")
+    )
+
+    payload = batch.items[0]
+    assert len(payload["restart_candidates"]) == 1
+    assert payload["restart_candidates"][0]["source"] == "events"
+    assert payload["restart_candidates"][0]["event_type"] == "server_restarted"
+    assert payload["restart_candidates"][0]["occurred_at"] == "2026-04-05T11:55:00Z"
+
+
 def test_collect_reports_errors_and_continues_other_services() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.startswith("/v1/services/srv-broken/"):
