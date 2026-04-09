@@ -132,6 +132,7 @@ Auth/token fields are automatically redacted in audit payloads.
 ## Quality gates
 
 ```powershell
+venv\Scripts\python.exe -m pytest -q -m "not e2e and not smoke"  # fast local feedback
 venv\Scripts\python.exe -m ruff check .
 venv\Scripts\python.exe -m pytest -q
 venv\Scripts\python.exe scripts/validate_environment.py

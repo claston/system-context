@@ -8,3 +8,9 @@ select = ["E", "F", "I"]
 [tool.ruff.lint.per-file-ignores]
 "alembic/env.py" = ["E402", "F401"]
 "scripts/mcp_smoke_check.py" = ["E402"]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: End-to-end tests that validate cross-module flows.",
+    "smoke: Fast smoke validations for critical runtime paths.",
+]
