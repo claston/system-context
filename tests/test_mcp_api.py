@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -251,6 +252,50 @@ def test_mcp_tools_call_runtime_includes_operational_problem_signals() -> None:
     assert runtime_payload["unexpected_restarts_last_24h"] == 0
     assert runtime_payload["last_unexpected_restart_at"] is None
     app.dependency_overrides.clear()
+
+
+def test_mcp_tools_call_runtime_handles_datetime_fields_in_payload() -> None:
+    class FakeContextService:
+        def get_system_component_context(self, system_component_name, environment=None):
+            return {
+                "system_component": system_component_name,
+                "environment": environment,
+                "latest_runtime_health": "live",
+                "latest_deployment_version": None,
+                "app_up": True,
+                "recent_pull_requests": 0,
+                "recent_commits": 0,
+                "dependencies": [],
+                "open_operational_issues": 1,
+                "unexpected_restarts_last_24h": 1,
+                "last_unexpected_restart_at": datetime(
+                    2026, 4, 9, 18, 9, 9, tzinfo=timezone.utc
+                ),
+            }
+
+    client = build_test_client()
+    app.dependency_overrides[get_context_service] = lambda: FakeContextService()
+    try:
+        response = client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": "runtime-2",
+                "method": "tools/call",
+                "params": {
+                    "name": "context.system_component.runtime",
+                    "arguments": {"name": "payment-api", "environment": "staging"},
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert "error" not in payload
+        runtime_payload = payload["result"]["structuredContent"]
+        assert runtime_payload["last_unexpected_restart_at"] == "2026-04-09T18:09:09+00:00"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_mcp_resources_read_component_list_returns_json_text() -> None:

@@ -167,6 +167,7 @@ def _tool_result(json_payload: dict[str, Any]) -> dict[str, Any]:
         json_payload,
         separators=(",", ":"),
         sort_keys=True,
+        default=str,
     )
     return {
         "structuredContent": json_payload,
